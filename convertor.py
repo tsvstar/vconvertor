@@ -1,37 +1,16 @@
 # usage: convertor.bat [--debug] [--strict] [--key1=value1] [--key2==value2] [...] DIRECTORY_OR_FILE_TO_PROCESS1 [DIRECTORY_OR_FILE_TO_PROCESS2 [..]]
 
-#TODO: cached config(?)
-
 import os,sys
-import _mycfg
+import my.config as _mycfg
+import my.megui
 import my.util
 from my.util import makeint, splitl, adddict, vstrip
 
-import gc
-
-"""
-import subprocess
-cmd = ['C:\\MY\\VK_PYPY\\convertor\\Media_07.72\\MediaInfo.exe', '--Output=General;%Format%\nVideo;|VIDEO|%Width%x%Height%@%FrameRate%', "E:\\_F_2015\\nostalgi\\20060810-8287.AVI"]
-cmd = ['C:\\MY\\Portable Python 2.7.5.1\\convertor\\Media_07.72\\MediaInfo.exe', '--Output=General;%Format%\nVideo;|VIDEO|%Width%x%Height%@%FrameRate%|%BitRate/String%|%DisplayAspectRatio%|%Format%|%Format_Profile%|%ScanType%|%ScanOrder%\nAudio;|AUDIO|%Channel(s)%|%Codec%|%Codec/String%|%BitRate/String%|%Alignment%|%Delay%', u'E:\\\u0412\u0438\u0434\u0435\u043e\\2 \u0441\u043f\u043e\u0441\u043e\u0431\u0430 \u043d\u0430\u043b\u0430\u0434\u0438\u0442\u044c \u043e\u0442\u043d\u043e\u0448\u0435\u043d\u0438\u044f.mp4']
-
-cmd[-1] = my.util.str_encode(cmd[-1],'cp1251')
-#cmd = ' '.join(cmd)
-print type(cmd)
-print cmd
-#subprocess.check_output(cmd,stderr=subprocess.STDOUT)
-fp = subprocess.Popen( cmd, stdout=subprocess.PIPE, shell = not isinstance(cmd,list) )
-#print subprocess.call(cmd, stderr=subprocess.STDOUT, shell=True)
-stdout,stderr = fp.communicate()
-print "STDOUT"
-print stdout
-print "STDERR"
-print stderr
-
-exit()
-"""
-
-
 ################################
+
+my.util.prepare_console()
+
+# PARSE ARGV
 
 isDebug = 0
 isStrict = 0
@@ -54,17 +33,11 @@ for v in sys.argv[1:]:
             v = v[:-1]
         to_process.append(v)
 
-if len(to_process)==0:
-    print "No source given"
-    exit()
-
 if isDebug:
     print "isStrict=%s" % (True if isStrict else False)
     print "Extra options: %s" % str(keys)
     print "To process: %s" % str(to_process)
 
-
-my.util.prepare_console()
 
 cfg = _mycfg.ConfigLoader( isDebug = isDebug )
 
@@ -84,6 +57,8 @@ cfg.opt = { 'ENFORCE_BITRATE':  makeint,	# If defined and valid, that means "I s
 
 	    'ENCODE':        adddict,       # replacing of encoding sequences
 	    'DETECT':        adddict,		# replacing of detect patterns
+
+	    'MEGUI':         vstrip,		# replacing of detect patterns
 	   }
 
 # sections[sectype] = [ datatype, isname_required, proccessor]
@@ -95,12 +70,23 @@ cfg.sections = { "":         [ 'dict', False, _mycfg.ConfigLoader.load_opt_proce
 		}
 
 
-# Config loader should say if non-empty but malformed string
-defaultOpt = ( "FILES_ONLY=*.mp4|*.mts'\n" )
-cfg.load_config( fname='INTERNAL', content=defaultOpt.split('\n'), strictError = isStrict )
+# LOAD CONFIG
+print "\nLoad configs"
+
+# a) load default values
+defaultOpt = ( "FILES_ONLY=*.mp4|*.mts\nRECURSIVE=1\n" )
+cfg.load_config( fname='INTERNAL', content=defaultOpt.split('\n'), strictError = True )
+internal = cfg.config['']	#.copy()
+del cfg.config['']
+
+# b) load files
 cfg.load_config( fname= os.path.join(my.util.base_path, '!convert.cfg' ), strictError = isStrict )
 cfg.load_config( fname= os.path.join(my.util.base_path, '!templates.cfg' ), strictError = isStrict )
 
+# c) get undefined values from internal default values
+cfg.config[''][None] = cfg.replace_opt( internal[None], cfg.config[''][None] )
+
+# d) debug output
 if isDebug:
     print
     for k1,v1 in cfg.config.items():
@@ -117,10 +103,10 @@ for k,v in cfg.opt.iteritems():
     mainopts[k] = ''
 cfg.replace_opt( mainopts, cfg.config[''][None] )   # replace from base section of options from config
 mainopts['TASK'] = keys.get('TASK', mainopts['TASK'])   #replace TASK from given in ARGV options
-tasks = filter( len, my.util.splitl( mainopts['TASK'] ) ) # split list of tasks
+tasks = filter( len, cfg.get_opt(mainopts, TASK) )  # split list of tasks
 for t in tasks:
-    if isDebug:
-        print "Apply TASK '%s'" % t
+    #if isDebug:
+    print "Apply TASK '%s'" % t
     if t not in cfg.config['TASK']:
         print "Unknown task '%s'" % my.util.str_encode(t,'cp866')
         if isStrict:
@@ -129,63 +115,55 @@ for t in tasks:
     cfg.replace_opt( mainopts, cfg.config['TASK'][t] ) # replace from task
 cfg.replace_opt( mainopts, keys ) # replace from given in ARGV options (they have most priority)
 
+
 # PREPARE PATTERNS
-cfg.pattern_template['DETECT'] = _mycfg.PatternTemplate( '{CONTAINTER}|VIDEO|{WIDTH}x{HEIGHT}@{FPS}|{VIDEO_BRATE}|{RATIO}|{VCODEC}|{VPROFILE}|{VSCAN_TYPE}|{VSCAN_ORDER}'+
-							'|AUDIO|{A_CHANNEL}|{A_CODEC}|{A_CODEC2}|{A_BRATE}|{A_ALIGNMENT}|{A_DELAY_MS}')
-cfg.pattern_template['ENCODE'] = _mycfg.PatternTemplate( '{BITRATE}|{AVS_TEMPLATE}|{INDEX_JOB}|{VIDEO_PASS}|{AUDIO_ENCODE}|{MUX_JOB}' )
-p_detect = cfg.pattern_template['DETECT'].parse_pattern( cfg.config['DETECT'][None] )
+cfg.pattern_template['DETECT'] = _mycfg.PatternTemplate( 'DETECT',
+						'{CONTAINTER}|VIDEO|{WIDTH}x{HEIGHT}@{FPS}|{V_BRATE} {V_BRATE_TYPE}|{RATIO}|{VCODEC}|{VPROFILE}|{VSCAN_TYPE}|{VSCAN_ORDER}'+
+						'|AUDIO|{A_CHANNEL}|{A_CODEC}|{A_CODEC2}|{A_BRATE}|{A_ALIGNMENT}|{A_DELAY_MS}')
+cfg.pattern_template['ENCODE'] = _mycfg.PatternTemplate( 'ENCODE', '{BITRATE}|{AVS_TEMPLATE}|{INDEX_JOB}|{VIDEO_PASS}|{AUDIO_ENCODE}|{MUX_JOB}' )
+p_detect = cfg.pattern_template['DETECT'].parse_pattern( cfg.config['DETECT'][None], strictError = True )
 p_encode = cfg.pattern_template['ENCODE'].parse_pattern( cfg.config['ENCODE'][None] )
 
-if isDebug:
-    print
-    for pname,pval in p_encode.items():
-        pval1 = pval.copy()
-        del pval1['_']
-        print "%s = %s\n%s" % ( pname, pval['_'], str(pval1) )
+if True or isDebug:
+    _mycfg.PatternTemplate.PrintParsedList( p_encode )
+    _mycfg.PatternTemplate.PrintParsedList( p_detect )
+exit(1)
 
 
-# CHECK TEMPLATES EXISTENCE
-template_path = os.path.join( my.util.base_path, 'templates')
-if isStrict:
-    for pname,pval in p_encode.items():
-        cfg.load_template( template_path, pval.get("{AVS_TEMPLATE}",None) )
-        cfg.load_template( template_path, pval.get("{INDEX_JOB}",None) )
-        v = cfg.load_template( template_path, pval.get("{VIDEO_PASS}.1pass",None), fatal=False )
-        if v is None:
-            cfg.load_template( template_path, pval.get("{VIDEO_PASS}",None) )
-        else:
-            cfg.load_template( template_path, pval.get("{VIDEO_PASS}.2pass",None), fatal=False )
-        cfg.load_template( template_path, pval.get("{AUDIO_ENCODE}",None) )
-        cfg.load_template( template_path, pval.get("{MUX_JOB}",None) )
+####################################################################
 
+def PreloadEncodingTemplates( template_dict ):
+    global cfg
+    for pname,pval in template_dict.items():
+        cfg.load_template( pval.get("{AVS_TEMPLATE}",None) )
+        cfg.load_template( pval.get("{INDEX_JOB}",None) )
+        vpass =pval.get("{VIDEO_PASS}",None)
+        if vpass not in [None,'']:
+            v = cfg.load_template( "%s.1pass"%vpass, fatal=False )
+            if v is None:
+                cfg.load_template( vpass )
+            else:
+                cfg.load_template( "%s.2pass"%vpass, fatal=False )
+        cfg.load_template( pval.get("{AUDIO_ENCODE}",None) )
+        cfg.load_template( pval.get("{MUX_JOB}",None) )
 
-"""
-for fname in to_process:
-    fname = my.util.str_decode(fname)
-    result = my.util.scan_files( fname, recursive = True, pattern = "*.jpg" )
-    for f in result:
-        print my.util.str_encode(f,'cp866')
-exit()
-"""
 
 class MyCachedProcessor( my.util.CachedProcessor ):
     def __init__( self, cmd, cacheObj, verbose = False, shell = False ):
         super(MyCachedProcessor,self).__init__( cmd, cacheObj, verbose, shell )
 
-    def validate( self, value ):
+    @staticmethod
+    def validate( value, verbose = False ):
         global cfg, _mycfg
         try:
             #print value
-            (cfg.pattern_template['DETECT']).parse_pattern( {'_': value}, strictError = True, silent = True )
-            return True
+            return (cfg.pattern_template['DETECT']).parse_pattern( {'_': value}, strictError = True, silent = not verbose )
+            ##return True
         except _mycfg.StrictError:
-            return False
-
-#gc.set_debug(gc.DEBUG_STATS)
+            return None
 
 def PHASE1():
     print "PHASE 1: Collect info"
-    cache = my.util.FileInfoCache( '.cache' )
     mediaInfoExe = os.path.join(my.util.base_path,'Media_07.72','MediaInfo.exe')
     #mediaInfoTemplate = os.path.join(my.util.base_path,'Media_07.72','template3.txt')
     #output = '--Output="file://%s"'%mediaInfoTemplate
@@ -194,11 +172,16 @@ def PHASE1():
 Video;|VIDEO|%Width%x%Height%@%FrameRate%|%BitRate/String%|%DisplayAspectRatio%|%Format%|%Format_Profile%|%ScanType%|%ScanOrder%
 Audio;|AUDIO|%Channel(s)%|%Codec%|%Codec/String%|%BitRate/String%|%Alignment%|%Delay%""" )
 
-    processor = MyCachedProcessor( [ mediaInfoExe, output], cache, shell = False, verbose = ( 3 if isDebug else 2 ) )
+    process_queue = []
+    cacheObj = my.util.FileInfoCache( '.cache' )
+    processor = MyCachedProcessor( [ mediaInfoExe, output ], cacheObj, shell = False, verbose = ( 3 if isDebug else 2 ) )
     worker = my.util.PsuedoMultiThread( processor, 2, shell = processor.shell )
-    for fname in to_process:
+    with my.util.guard_objects( [ worker, processor, cacheObj ] ):
+      for fname in to_process:
         if os.path.isdir(fname):
-            result = my.util.scan_dir( fname, recursive = True, pattern = "*.mp4|*.mts" )
+            result = my.util.scan_dir( fname,
+                            recursive = cfg.get_opt( mainopts, 'RECURSIVE' ),
+                            pattern = cfg.get_opt( mainopts, 'FILES_ONLY' ) )
             for fname in result:
                 worker.add_task(fname)
         elif os.path.isfile(fname):
@@ -206,14 +189,193 @@ Audio;|AUDIO|%Channel(s)%|%Codec%|%Codec/String%|%BitRate/String%|%Alignment%|%D
         else:
             print "Unknown source: %s" % fname
             if isStrict:
-                exit()
-    #worker.finalize_tasks()
-    #gc.collect()
+                raise _mycfg.StrictError()
 
-PHASE1()
-#print gc.get_objects()
-#print gc.garbage
+      for fname in processor.processed:
+        process_queue.append( [ fname, cacheObj.cache[fname] ] )
+      return process_queue
 
-print "\nPHASE 2: Generate tasks"
-print "!!TODO!!"
+def PHASE2( process_queue ):
+    print "\nPHASE 2: Generate tasks"
+    for fname, info in process_queue:
+        if info in [None,'']:
+            continue
+
+        # parse mediainfo
+        parsed_info = MyCachedProcessor.validate( info, verbose = True )
+        if parsed_info is None:
+            print "^^for file %s" % str_encode(fname,'cp866')
+            continue
+        parsed_info = parsed_info['_']
+
+        # find matched 'detect' patterns
+        detected = []
+        is_forbid = False
+        for pname, pdict in p_detect.iteritems():
+            for k,v in pdict:
+                if v in [None,'']:
+                    continue
+                if k not in parsed_info:
+                    break
+                if parsed_info[k] != v:
+                    break
+            else:
+                is_forbid = is_forbid or ( pname if pname.startswith('__forbid') else False )
+                detected.append( pname )
+
+        #cutoff suffix from detect pattern
+        detected = list( set( map( lambda s: s.split('.',1)[0], detected ) ) )
+
+        print "%(fname)s\t=> %(w)s*%(h)s@%(fps)s = %(ar)s; %(profile)s ( %(detected)s )" % {
+                        'fname': fname,
+                        'w': parsed_info['{WIDTH}'],
+                        'h': parsed_info['{HEIGHT}'],
+                        'fps': parsed_info['{FPS}'],
+                        'ar': parsed_info['{RATIO}'],
+                        'profile': parsed_info['{VPROFILE}'],
+                        'detected': ' + '.join(detected) if len(detected) else "BASIC",
+                    }
+
+        if is_forbid:
+            print " >> skipped (match to '%s' pattern)" % (is_forbid)
+            continue
+
+        enforce_patterns = cfg.get_opt( mainopts, 'ENFORCE_PATTERN' )
+        if len( enforce_patterns ):
+            if enforce_patterns[0]=='':
+                enforce_patterns = detected + filter(len, enforce_patterns)
+            if set(enforce_patterns)!= set(detected):
+                print " >> enforced encoding as %s" % '+'.join(set(enforce_patterns))
+            detected = enforce_patterns
+
+        #sys.stdout.flush()
+        #sys.stdout.write()
+
+        encoder = _mycfg.Encoding( cfg, cfg.get_opt( mainopts, 'SUFFIX' ) )
+
+        # check collision
+        to_encode = {}                      # to_encode[job_type] = {pname, pvalue, ?adj?, ?tmpl_list? }
+        sysPatternList = [ 'BASIC', 'TOP' ]
+        try:
+            for p_token_name in p_encode :
+                if p_token_name in ['_']:       # skip 'printable value'
+                    continue
+
+
+                if p_token_name=='{BITRATE}':   # if enforced_bitrate defined, then do not get it from patterns
+                    enforced_brate = cfg.get_opt( mainopts, 'ENFORCE_BITRATE' )
+                    if  enforced_brate > 0:
+                        to_encode[p_token_name] = { 'pname': 'OPTION:ENFORCE_BITRATE',  'pvalue': enforced_brate }
+                        continue
+
+                to_encode_cur = {}      # accumulate values for token here
+                encoder.path = []       # reset list of processed patterns
+
+                # SCAN PATTERNS
+                #    for ['sony:720','__dga'] with suffix 'old'
+                #       [sony:720.old] -> sony:720 -> [sony.old] -> [sony]
+                #       [__dga.old] -> __dga
+                #
+                #    if still not then check default patterns
+                #               -> [BASIC.old] -> BASIC -> [TOP.old] -> TOP
+                try:
+                    for pname in ( detected + sysPatternList ):
+
+                        # BASIC and TOP are default values. Do not check for values/collision if we already find template
+                        if ('pvalue' in to_encode_cur) and (pname in sysPatternList):
+                            continue
+
+                        # Scan all variants of one pattern for requested token template
+                        pname_real, pvalue, adjustments, template_content = encoder.get_encode_pattern( pname, p_token_name,  (p_token_name=='{BITRATE}') )
+
+                        # adjustment - check collision + remember
+                        if (adjustments is not None):
+                            if to_encode_cur.get('adj',adjustments) != adjustments :
+                                raise _mycfg.StrictError( "collision between '%s' and '%s' encoding patterns for %s" % ( pname_real, to_encode_cur['pname'], p_token_name ) )
+                            to_encode_cur['adj'] = adjustments
+
+                        # template - check collision + remember
+                        if pname_real is not None:
+                            if to_encode_cur.get('pvalue',pvalue) != pvalue:
+                                raise _mycfg.StrictError( "collision between '%s' and '%s' encoding patterns for %s" % ( pname_real, to_encode_cur['pname'], p_token_name ) )
+                            to_encode_cur.update( { 'pname': pname_real, 'pvalue': pvalue, 'tmpl_list':template_content } )
+
+                    #If no value in any pattern found
+                    if to_encode_cur.get('pvalue',None) is None:
+                        # a) For BITRATE - try to get default value from options
+                        if p_token_name=='{BITRATE}':
+                            encoder.path.append('OPTION:BITRATE')
+                            default_brate = cfgcfg.get_opt( mainopts, 'BITRATE' )
+                            if default_brate <= 0:
+                                raise _mycfg.StrictError( "No valid bitrate defined in any encoding patterns or options" )
+                            to_encode_cur = { 'pname': 'OPTION:BITRATE',  'pvalue': default_brate }
+                        else:
+                        # b) For other cases - error. Should be defined exactly one
+                            raise _mycfg.StrictError( "Undefined %s" % p_token_name )
+                finally:
+                    if (isDebug):
+                        adj = to_encode_cur.get('adj',None)
+                        if adj is not None:
+                            ar_joined_pairs = map(lambda a: a[0] if a[1] is None else '='.join(a), adj)
+                            adj = "{%s}" % ( ','.join(ar_joined_pairs) )
+                        print "Token %(token)s. Path of scaned patterns: (%(path)s). Value = %(value)s%(adj)s " % {
+                                    'token': p_token_name,
+                                    'path': ' -> '.join(encoder.path),
+                                    'value': repr(to_encode_cur.get('pvalue',None)),
+                                    'adj': adj  }
+
+                to_encode[p_token_name] = to_encode_cur
+
+        except _mycfg.StrictError as e:
+            print " >> skipped (%s)" % str(e)
+            if isStrict:
+                raise _mycfg.StrictError
+            continue
+
+
+        # prepare jobs
+        jobs = []
+
+        # add jobs
+        for j in jobs:
+            my.megui.add_job( j )
+        my.megui.save_jobs()
+
+
+    print "!!TODO!!"
+
+
+#############################################
+
+# CHECK TEMPLATES EXISTENCE
+cfg.template_path = os.path.join( my.util.base_path, 'templates')
+if isStrict:
+     PreloadEncodingTemplates( p_encode )
+
+
+print "Load joblist"
+my.megui.megui_path = cfg.get_opt( mainopts, 'MEGUI' )
+if not len(my.megui.megui_path):
+    print "No path to MEGUI defined"
+    exit(1)
+if not os.path.isdir(my.megui.megui_path):
+    print "Invalid path to MEGUI (%s)" % my.megui.megui_path
+    exit(1)
+
+my.megui.load_jobs()
+if my.megui.dirty:
+    print "Restore missed jobs"
+    my.megui.save_jobs()
+
+if len(to_process)==0:
+    print "No source given"
+    exit()
+
+# PHASE1: Collect Info
+process_queue = PHASE1()
+
+# PHASE2: Add task
+PHASE2( process_queue )
+
+
 

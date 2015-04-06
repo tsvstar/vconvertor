@@ -1,0 +1,7 @@
+? cached config(using pickle?) -- for performance. looks like it fast enough anyway
+
+  parse videobrate / ({<float}, {>float}, {>=float, <=float}
+  better pattern config parsing (re.compile("^[A-Za-z_:0-9] *@?[=>]")
+  alternate pattern description syntax ( NAME @=> name=val1|name2>=val2,name2<=val2_1 )
+
+  multiple matches to same pattern(for detect) - what did i meant
