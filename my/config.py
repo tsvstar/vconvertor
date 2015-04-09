@@ -1,6 +1,28 @@
 import re, os.path
 
-# util function
+"""
+==========================================================
+           MODULE TO LOAD CONFIG:
+
+ * ParseArgv()
+ * class ConfigLoader(object):
+        load complex config with sections and names to config
+ * class PatternTemplate(object):
+        parse string to tokens by template
+ * class Encoding(object):
+        ???
+
+ * Auxilary:
+    - split_pair()
+    - CfgError  exception
+    - StrictError exception
+=========================================================
+"""
+
+
+# auxilary function:
+#  split value to strictly pair (if no separator found, then second value is None)
+#  + split both
 def split_pair( s, sep, strip = True ):
     a = s.split( sep, 1 )
     if strip:
@@ -9,7 +31,47 @@ def split_pair( s, sep, strip = True ):
         a += [None]
     return a
 
+# Simple argument parser with unknown list of options (all --key are treated as option,
+#       all other as arguments).
+# ARGUMENTS:
+#       argv - source list of sys.argv
+#       optlist - dict of specific(accumulative) options.
+#                   optlist[OPTNAME] = default_value (0 or [])
+# RETURN VALUE:
+#       ( options_dict, arguments_list )
+def ParseArgv( argv, optdict = {} ):
+    optdict = dict( map(lambda i: [i[0].lower(),i[1]],optdict.iteritems()) )
 
+    keys = dict(optdict)    # found --options
+    to_process = []         # not matched to -- arguments
+    for v in argv:
+        v1 = v.lstrip()
+
+        if v1.startswith("--"):                         # a) --option
+            v1 = v1[2:]
+            v1lower = v1.lower()
+            if  v1lower in optdict:                     # a1) accumulative --options
+                if isinstance(optdict[v1lower],int):
+                    keys[v1lower] += 1
+                else:
+                    keys[v1lower].append(v1lower)
+            else:
+                v1, v2 = _mycfg.split_pair( v1, '=' )   # a2) simple --options
+                keys[v1] = v2
+
+        else:                                           # b) argument
+            if v.endswith('"'):
+                v = v[:-1]
+            to_process.append(v)
+    return keys, to_process
+
+
+
+"""
+====================================
+            ERRORS
+====================================
+"""
 class CfgError(Exception):
     def __init__( self, lineno, message ):
         super(CfgError,self).__init__( message )
@@ -19,21 +81,77 @@ class StrictError(Exception):
     def __init__( self, message = None ):
         super(StrictError,self).__init__( message )
 
+
+"""
+===============================================================
+            MAIN CLASS TO LOAD CONFIG
+
+Able to process config with different kind of sections. Sections
+could have name.
+
+------------------------------
+[OPTION_SECTION]
+OPTION1=value1      #comment
+OPTION2{spec}=value2.1
+#OPTION2{spec2}=value2.2
+OPTION2{spec3}=value2.3
+
+[TEXT_SECTION] = name1
+something here
+
+[TEXT_SECTION] = name2
+and something another more
+
+[PATTERN_SECTION]
+PATTERNNAME1 => PATTERN1
+PATTERNNAME2 => PATTERN2
+------------------------------
+
+* How to use:
+    cfg = ConfigLoader()
+    cfg.opt = {...}
+    cfg.sections = {...}
+
+
+===============================================================
+"""
+
 class ConfigLoader(object):
 
     ### Ctor ###
+    """ CTOR """
     def __init__( self, isDebug = False ):
-        self.opt = {}           # DEFINITION OF VALID OPTIONS: opt[optionName] = [ processor, default_value ]
-        self.sections = {}      # DEFINITION OF VALID SECTIONS: sections[sectype] = [ datatype, isname_required, proccessor]
+        self.opt = {}           # DEFINITION OF VALID OPTIONS:      opt[optionName] = [ processor, default_value ]
+        self.sections = {}      # DEFINITION OF VALID SECTIONS:     sections[sectype] = [ datatype, isname_required, proccessor]
         self.pattern_template = {}  # HOW TO PARSE PATTERN BY TYPE: pattern_template[section_type] = template
-        self.templates = {}     # TEMPLATES PATTERN: templates[template_name] = loaded template or None if it exists but not loaded yet
+        self.templates = {}     # TEMPLATES PATTERN:                templates[templ_name] = loaded_template or None(exists but not loaded yet)
 
         self.fname = ''
-        self.config = {}        # config[sectiontype][sectionname] = content (dict or plain str)
+        self.config = {}        # RESULT:                           config[sectiontype][sectionname] = content (dict or plain str)
 
         self.isDebug = isDebug
 
-    ### Processors ###
+
+    """ *********** SECTION CALLBACK PROCESSORS ********************
+
+          callback( self, sec_type, sec_name, line )
+            sec_type - type of section                    ([SECTION])
+            sec_name - name of section. None if not given ([SECTION] = name )
+            line     - current line to process
+
+          NOTE: called line by line
+
+       ************************************************************* """
+
+
+    """ * Process option section:
+          format:
+             a) OPTION=VALUE    # comment
+                --> self.config[sec_type][sec_name][OPTION] = VALUE
+
+             b) OPTION{extra}=VALUE    # comment
+                --> self.config[sec_type][sec_name][OPTION] = {OPTIONAL_EXTRA: VALUE,.. }
+    """
     def load_opt_processor( self, sec_type, sec_name, line ):
         line = line.split('#',1)[0]     # cutoff comments
         name, value = split_pair( line, '=', strip = True  )
@@ -46,71 +164,95 @@ class ConfigLoader(object):
         name = name.upper()
         if name not in self.opt:
             raise CfgError( -1, "Unknown option %s" % name )
+        ##print "%s|%s" % (name, subname)
 
-        #print "%s|%s" % (name, subname)
+        CUR_SECTION = self.config[sec_type][sec_name]       # reference (because mutable type)
 
         if subname is None:
-            keyexist = ( name in self.config[sec_type][sec_name] )
-            self.config[sec_type][sec_name][name] = value
+            # there is no specification -> simple value
+            keyexist = ( name in CUR_SECTION )
+            CUR_SECTION[name] = value
         else:
-            if ( name not in self.config[sec_type][sec_name]
-                 or not isinstance( self.config[sec_type][sec_name][name], dict ) ):
-                self.config[sec_type][sec_name][name] = {}
+            # specification is given -> remember in dictionary
+            cur_value = CUR_SECTION.setdefault( name, {} )
+            if ( not isinstance( CUR_SECTION[name], dict ) ):
+                CUR_SECTION[name] = { None: cur_value }
 
-            subname = subname[:-1]
-            keyexist = ( subname in self.config[sec_type][sec_name][name] )
-            self.config[sec_type][sec_name][name][subname] = value
+            subname = subname[:-1]                      # cutoff tail '}'
+            keyexist = ( subname in CUR_SECTION[name] )
+            CUR_SECTION[name][subname] = value
 
-            name = "%s{%s}" % ( name, subname )
+            name = "%s{%s}" % ( name, subname )         # make human readable name
 
         if keyexist:
             raise CfgError( -1, "{Warning} Option %s is defined twice" % name )
 
+
+    """ * Process plain text section.
+          format:
+            plain text
+            --> self.config[sec_type][sec_name] = list_of_lines
+    """
     def load_text_processor( self, sec_type, sec_name, line ):
         self.config[sec_type][sec_name] += [line]
 
+    """ * Process pattern section.
+          format:
+                PATTERNNAME => VALUE    # comment
+                --> self.config[sec_type][sec_name] = VALUE
+    """
     def load_pattern_processor( self, sec_type, sec_name, line ):
-        line = line.split('#',1)[0]     # cutoff comments
+        line = line.split('#',1)[0]                 # cutoff comments
         name, value = split_pair( line, '=>', strip = True )
-        #print 'PROCESS ', name, '=', value, '=', line.strip()		##DEBUG
+        ##print 'PROCESS ', name, '=', value, '=', line.strip()		##DEBUG
         if value is None:
             if name=='':
                 return
             raise CfgError( -1, "Malformed line (no '=>' sign)")
 
-        if name in self.config[sec_type][sec_name]:
-            self.config[sec_type][sec_name][name] = value
+        CUR_SECTION = self.config[sec_type][sec_name]       # reference (because mutable type)
+        if name in CUR_SECTION:
+            CUR_SECTION[name] = value
             raise CfgError( -1, "{Warning} Pattern %s is defined twice" % name )
-        self.config[sec_type][sec_name][name] = value
+        CUR_SECTION[name] = value
 
-    ### Aux function ###
-    def print_cfg_error( self, e ):
+
+    """ *********** INTERNALL AUXILARY FUNCTIONS ********************
+       ************************************************************* """
+
+    # process error ( +suppres dupes +raise StrictError if needed )
+    def _print_cfg_error( self, e ):
         if e.lineno not in self.cfg_errors:
             print "%s:%d - %s" % ( self.fname, e.lineno, str(e) )
             self.cfg_errors.add( e.lineno )
         if self.strictError:
             raise StrictError()
 
-    ### Aux function ###
-    def _write_section( self, sec_type, sec_name, content, lineno ):
+
+    # PROCESS SECTION
+    #     sec_type   - section type
+    #     sec_name   - section name (optional. none if not given)
+    #     content    - list of lines
+    #     lineno     - lineno of section first line (declaration [SECTION])
+    def _process_section( self, sec_type, sec_name, content, lineno ):
 
         data_type, isname_required, processor = self.sections[sec_type]
 
         if self.isDebug:
-            print "Write section (%s|%s): %s" % (sec_type,sec_name, str(self.sections[sec_type]) )
+            print "Process section (%s|%s): %s" % (sec_type,sec_name, str(self.sections[sec_type]) )
 
         if sec_name =='' and isname_required:
             raise CfgError ( lineno, "Section %s have no name - skip it" % sec_type )
 
-        #print "lineno=%d\n%s" % (lineno,content)			##DEBUG
+        ###print "lineno=%d\n%s" % (lineno,content)			##DEBUG
+
         # exclude header
         if sec_type!='':
             lineno -= 1
             content = content[1:]
 
         # prepare
-        if sec_type not in self.config:
-            self.config[sec_type] = dict()
+        self.config.setdefault( sec_type, dict() )
 
         if sec_name in self.config[sec_type]:
             # name exists - only empty allowed to append
@@ -118,24 +260,24 @@ class ConfigLoader(object):
                 raise CfgError ( lineno, "Section %s with name '%s' is already defined - skip it" % ( sec_type, sec_name ) )
         else:
             # name not exists - create section
-            if data_type == 'dict':
-                self.config[sec_type][sec_name] = dict()
-            else:
-                self.config[sec_type][sec_name] = []
-
+            self.config[sec_type][sec_name] = dict() if (data_type == 'dict') else list()
 
         # Main cycle
         for l in content:
             try:
-                #print lineno, '===', l.strip()			##DEBUG
+                ##print lineno, '===', l.strip()			##DEBUG
                 processor( self, sec_type, sec_name, l )
             except CfgError as e:
                 e.lineno = lineno
-                self.print_cfg_error(  e )
+                self._print_cfg_error(  e )
             finally:
                 lineno += 1
 
-    # existed options from optdict2 replace options in optdict1
+
+    """ ****************       OPERATIONS       ********************
+       ************************************************************* """
+
+    """ --- existed options from optdict2 replace options in optdict1 --- """
     @staticmethod
     def replace_opt( optdict1, optdict2 ):
         for k,v in optdict2.iteritems():
@@ -143,6 +285,7 @@ class ConfigLoader(object):
                 optdict1[k] = v
         return optdict1
 
+    """ --- getter: get value of option "optname" from dictionary "optdic" ---"""
     def get_opt( self, optdict, optname ):
         if optname not in self.opt:
             print "INTERNAL FAILURE: unknown option %s" % optname
@@ -152,7 +295,17 @@ class ConfigLoader(object):
             print "__getopt(%s) = %s (%s)" %(optname, optdict.get( optname, None ), str(rv) )
         return rv
 
-    ### MAIN ENTRY ###
+
+
+    """ ****************       MAIN ENTRY       ********************
+
+         Load config (based on "self" config templates) to self.config
+            fname       = filename to get (if not "content" given)
+            strictError = if True, then any config missconsistence raise StrictError()
+            content     = text content to parse
+
+       ************************************************************* """
+
     def load_config( self, fname, strictError = False, content = None ):
         self.fname = fname
         self.cfg_errors = set()
@@ -172,42 +325,70 @@ class ConfigLoader(object):
         section_re = re.compile("^\[([A-Z\_]+)\] *(\= *([A-Za-z0-9\_]+))?")
 
         lineno = 1
-        prev = [ '', None, [], 1 ]        # [section_type, section_name, content, startline]
+        prev = [ '', None, [], 1 ]        # [0section_type, 1section_name, 2content, 3startline]
         for l in content:
             try:
-                if len( l.strip() )==0:
+                if len( l.strip() )==0:                 # skip empty lines
                     continue
-                #print lineno, l.strip()				##DEBUG
-                if l[0]=='[':
-                    m = section_re.match(l)
-                    if m is None:
-                        raise CfgError( lineno, "Malformed section header" )
-                    elif m.group(1) not in self.sections.keys():
-                        raise CfgError( lineno, "Unknown section type %s"%m.group(1) )
-                    self._write_section( *prev )
-                    if self.isDebug:
-                        print "detect section at %d: %s|%s" % ( lineno, m.group(1),m.group(3) )
-                    prev = [ m.group(1), m.group(3), [], lineno + 2 ]		# +1 to compensate [section line], +1 because numeration from 1
+                ##print lineno, l.strip()				##DEBUG
+
+                if l[0]!='[':                           # if not section header - just continue to accumulate lines
+                    continue
+
+                # this is the section header - process finished and reset control array to new sections
+                m = section_re.match(l)
+                if m is None:
+                    raise CfgError( lineno, "Malformed section header" )
+                elif m.group(1) not in self.sections.keys():
+                    raise CfgError( lineno, "Unknown section type %s"%m.group(1) )
+                self._process_section( *prev )
+                if self.isDebug:
+                    print "detect section at %d: %s|%s" % ( lineno, m.group(1),m.group(3) )
+                prev = [ m.group(1), m.group(3), [], lineno + 2 ]		# +1 to compensate [section line], +1 because numeration from 1
+
             except CfgError as e:
-                self.print_cfg_error( e )
+                self._print_cfg_error( e )
                 print l.strip()
-            finally:
-		#print "WRITE ", lineno, len(prev[2]), l.strip()		##DEBUG
+            finally:                                    # on each line: remember content and increase lineno
                 prev[2].append(l)
                 lineno += 1
-        try:
-            self._write_section( *prev )
-        except CfgError as e:
-            self.print_cfg_error( e )
 
-    ### TEMPLATE LOAD ###
+        ##print "WRITE ", lineno, len(prev[2]), l.strip()		##DEBUG
+        try:
+            # process final section
+            self._process_section( *prev )
+        except CfgError as e:
+            self._print_cfg_error( e )
+
+
+    """ **************** TEMPLATE (FILE) PROCESSING  ***************
+            load to cache templates (files).
+            special value '','*', 'copy' are exists
+
+            CONFIG:
+                self.tpath - template directory
+       ************************************************************* """
+
+    """
+        PURPOSE: get template "tname"
+                (load template from templatedir if not in cache; If
+                    fatal = True - then error on load cause Exception)
+        RETURN: content of template
+    """
     def load_template( self, tname, fatal = True ):
+        # found in cache
         if tname in self.templates:
             return self.templates[tname]
+
         self.templates[tname] = None
+        # empty value (no template)
         if tname in [None,'','*']:
             return None
 
+        if tname in ['copy']:
+            return ''
+
+        # load file
         try:
             fname = os.path.join( self.tpath, tname )
             with open( fname, 'r') as f:
@@ -219,9 +400,16 @@ class ConfigLoader(object):
                 raise
         return self.templates[tname]
 
-    def load_multi_templates( self, tname ):
-        if tname in [None,'']:
+    """
+        PURPOSE: load one or multi-pass template
+                 (tname or [tname.1pass, tname.2pass, ...] )
+        RETURN: ordered list of templates content
+    """
+    def load_multi_templates( self, tname, fatal = False ):
+        if tname in [None,'','*']:
             return []
+        if tname in ['copy']:
+            return ['']
 
         loaded = []
         while True:
@@ -233,22 +421,44 @@ class ConfigLoader(object):
         if len(loaded):
             return loaded
 
-        v = self.load_template( tname, fatal = False )
+        v = self.load_template( tname, fatal = fatal )
         if v is None:
             #raise StrictError("No template found '%s'"%loa)
             return None
         return [v]
 
 
-########## PATTERN PARSING FUNCTION ##############
+
+
+"""
+===============================================================
+            PATTERN PARSING FUNCTION
+
+PURPOSE: Easy parse string to tokens.
+         * Parsed string must exactly match template.
+         * Token value can't contain separator which is placed right after it
+
+EXAMPLE:
+    t = PatternTemplate( 'DETECT', '{CONTAINTER}|VIDEO|{WIDTH}x{HEIGHT}@{FPS}|{V_BRATE} {V_BRATE_TYPE}'
+    d = t.parse_pattern('mp4|VIDEO|320x250@25.3|33.15 Mbps here')
+    --> d = { 'CONTAINER':'mp4', 'WIDTH': '320', 'HEIGHT':'250', 'FPS':'25.3', 'V_BRATE':'33.15', 'VBRATE_TYPE': 'Mbps here' }
+
+
+===============================================================
+"""
 
 class PatternTemplate(object):
     isDebug = False
 
+    # Constructor:
+    #   section - name of section (only to printable info)
+    #   template - name of parsed token
     def __init__( self, section, template ):
         self.section = section
         self.ar_sep, self.ar_tokens = self._compile_pattern_template(template)
 
+    # auxilary: cut value till sep
+    # RETURN VALUE: [ 0value, 1string_after_value, 2pos_where_value_found ]
     @staticmethod
     def _check_sep( sep, s ):
         if len(sep)<=0:          # no separator
@@ -263,6 +473,8 @@ class PatternTemplate(object):
             value = None
         return value, s[foundat+len(sep):], foundat
 
+    # auxilary: find tokens and
+    # RETURN VALUE: [ list_of_separators, list_of_tokennames]
     @staticmethod
     def _compile_pattern_template( template ):
         token = re.compile("\{[A-Za-z0-9_]+\}")
@@ -276,6 +488,7 @@ class PatternTemplate(object):
 
         return ar_sep, ar_tokens
 
+    # auxilary: DEBUG???
     @staticmethod
     def PrintParsedList( parsedlist ):
         print
@@ -285,6 +498,12 @@ class PatternTemplate(object):
             print "%s = %s\n%s" % ( pname, pval['_'], str(pval1) )
 
 
+    """ main function:
+            config      - string to parse
+            strictError - if True, then raise exception on error
+            silent      - if True, do not produce any message
+
+    """
     def parse_pattern( self, config, strictError = False, silent = False ):
 
         # parse pattern
@@ -324,21 +543,35 @@ class PatternTemplate(object):
 
 
 
+"""
+===============================================================
+            LOOKING UP ENCODING
+???? TODO DESCRIPTION
+
+===============================================================
+"""
 class Encoding(object):
+
+    # CONSTRUCTOR
+    #
+    #   p_encode - dict of patterns  ( [patternname] = "value{optional_adj}" )
+    #   cfg      - ConfigLoader() object to load found templates
+    #   suffix   - system suffix     ( example: old, new, '')
+    #   verbose  - unused
     def __init__( self, p_encode, cfg, suffix, verbose = False ):
         self.path = []
         self.p_encode = p_encode
         self.cfg = cfg
         self.suffix_list = [ '.'+suffix, '' ] if len(suffix) else ['']
-        self.verbose = verbose
+        ##self.verbose = verbose
 
     # FIND VALID TOKEN
     # EXAMPLE for 'sony:720' and suffix '.old':
     #       [sony:720.old] -> sony:720 -> [sony.old] -> [sony]
     #
     # ARGUMENTS:
-    #   pname        = name of encoding pattern (sony:480,..)
-    #   p_token_name = name of token
+    #   pname        = name of encoding pattern         (example - sony:480,..)
+    #   p_token_name = name of token.just for message   (example - INDEX_JOB)
     #   isPositiveInteger = True if value should be exactly integer >0
     #
     # RETURN VALUE:
@@ -374,7 +607,7 @@ class Encoding(object):
                         if ( isServiceClass and len(suffix) ):  # b) service_pattern with suffix - also optional try
                             continue
                         """
-                        self.path.append(pname3)                # c) all other cases - are required
+                        self.path.append(pname3)        # c) all other cases - are required
                         raise StrictError("No '%s' encoding pattern defined") % pname3
 
 
@@ -385,7 +618,8 @@ class Encoding(object):
                         continue
                     value, adj = split_pair( value, '{' )
                     if adj is not None and adj[-1]!='}':
-                        raise StrictError("No enclosing bracket for token '%s' at pattern '%s': %s") % ( p_token_name, pname3, self.p_encode[pname3] )
+                        raise StrictError("No enclosing bracket for token '%s' at pattern '%s': %s" %
+                                             ( p_token_name, pname3, self.p_encode[pname3] ) )
 
                     if isPositiveInteger:               # specific processing {BITRATE} token. this is integer
                         brate = my.util.makeint(value)

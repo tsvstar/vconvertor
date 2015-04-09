@@ -1,6 +1,19 @@
 import re, os.path
 import my.util
 
+"""
+==========================================================
+
+   PROCESSING MEGUI CONFIGS
+
+DRAFT REWRITED FROM PHP
+TO CHECK
+TO REFACTOR(use xml? library)
+
+=========================================================
+"""
+
+
 megui_path = None
 
 joblist_content = [ '', '', '']     # pre, jobs, post
