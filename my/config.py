@@ -439,7 +439,7 @@ PURPOSE: Easy parse string to tokens.
          * Token value can't contain separator which is placed right after it
 
 EXAMPLE:
-    t = PatternTemplate( 'DETECT', '{CONTAINTER}|VIDEO|{WIDTH}x{HEIGHT}@{FPS}|{V_BRATE} {V_BRATE_TYPE}'
+    t = PatternTemplate( 'DETECT', '{CONTAINER}|VIDEO|{WIDTH}x{HEIGHT}@{FPS}|{V_BRATE} {V_BRATE_TYPE}'
     d = t.parse_pattern('mp4|VIDEO|320x250@25.3|33.15 Mbps here')
     --> d = { 'CONTAINER':'mp4', 'WIDTH': '320', 'HEIGHT':'250', 'FPS':'25.3', 'V_BRATE':'33.15', 'VBRATE_TYPE': 'Mbps here' }
 
@@ -608,7 +608,7 @@ class Encoding(object):
                             continue
                         """
                         self.path.append(pname3)        # c) all other cases - are required
-                        raise StrictError("No '%s' encoding pattern defined") % pname3
+                        raise StrictError("No '%s' encoding pattern defined" % pname3 )
 
 
                     self.path.append(pname3)

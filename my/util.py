@@ -355,7 +355,7 @@ class FileInfoCache(object):
 
     def _getMTimeTag( self, fname ):
         if os.path.isfile( fname ):
-            return "%d+%s" % (os.path.getsize(fname), os.path.getmtime(fname))
+            return u"%d+%s" % (os.path.getsize(fname), os.path.getmtime(fname))
         else:
             return ''
 
@@ -373,13 +373,14 @@ class FileInfoCache(object):
                     f.write( "%s|%s|%s|%s\n" % (k,v[0],v[1],v[2]) )
 
     # SAFE GET VALUE FROM CACHE (None - not found or invalid)
-    def get( self, fname ):
+    def get( self, fname, check = True ):
+        ##print "get %s:>> %s >> %s" % (fname, self._getMTimeTag(fname), self.cache.get(fname,[None]) )
         if fname not in self.cache:
             return None
         if self._getMTimeTag(fname) != self.cache[fname][0]:
             self.delete(fname)
             return None
-        return self.cache[fname][0]
+        return self.cache[fname][2]
 
     # DELETE CACHE RECORD
     def delete( self, fname ):
@@ -388,8 +389,12 @@ class FileInfoCache(object):
             self.dirty = True
 
     # UPDATE VALUE IN CACHE.
-    # if quick=True - immediate append to the end of cachefile
-    def update( self, fname, value, quick = True ):
+    # quick     if =True - immediate append to the end of cachefile
+    # enforce   if =False - do not update if file info exists
+    def update( self, fname, value, quick = True, enforce = False ):
+        ##print "update %s %s" % (fname, enforce)
+        if not enforce and fname in self.cache:
+            return
         self.cache[fname] = ( self._getMTimeTag(fname), int(time.time()), value )
         if quick:
             try:
@@ -470,7 +475,7 @@ class CachedProcessor(object):
 
     def handle( self, fname, value ):
         value = value.rstrip('\n\r')
-        #print "%s\n%s\n" % (fname,value)
+        ##print " handle%s\n%s\n" % (fname,value)
         if self.validate( value ):
             self.cacheObj.update( fname, value )
             self.processed.append( fname )

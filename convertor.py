@@ -6,12 +6,15 @@
 #TODO: alternate syntax ( NAME @=> name=val1|name2>=val2,name2<=val2_1 )
 #TODO: multiple matches to same pattern(for detect)
 
+#TODO: if token name starts from {!}  - case insensetive comparision
+#THE BUG: - why {A_DELAY_MS} = '?' ??? it should become None
+
 import os,sys
 import my.config as _mycfg
 import my.megui
 import my.util
 from my.util import makeint, splitl, adddict, vstrip
-#__file__
+
 ################################
 
 def main():
@@ -33,7 +36,7 @@ def main():
 
     cfg = _mycfg.ConfigLoader( isDebug = isDebug )
     cfg.opt = { 'ENFORCE_BITRATE':  makeint,	# If defined and valid, that means "I surely know which video bitrate I'd like to have"
-    	    'ENFORCE_TEMPLATE': splitl,		# If defined, that means "I know which exactly templates should be used"
+    	    'ENFORCE_PATTERN': splitl,		# If defined, that means "I know which exactly templates should be used"
 
     	    'BITRATE':       makeint,		# Default value of bitrate (used if no correct defined in any matched template)
     	    'RECURSIVE':     makeint,		# is recursive scan for source files
@@ -111,7 +114,7 @@ def main():
     """ PREPARE PATTERNS """
 
     cfg.pattern_template['DETECT'] = _mycfg.PatternTemplate( 'DETECT',
-    						'{CONTAINTER}|VIDEO|{WIDTH}x{HEIGHT}@{FPS}|{V_BRATE} {V_BRATE_TYPE}|{RATIO}|{VCODEC}|{VPROFILE}|{VSCAN_TYPE}|{VSCAN_ORDER}'+
+    						'{CONTAINER}|VIDEO|{WIDTH}x{HEIGHT}@{FPS}|{V_BRATE} {V_BRATE_TYPE}|{RATIO}|{VCODEC}|{VPROFILE}|{VSCAN_TYPE}|{VSCAN_ORDER}'+
     						'|AUDIO|{A_CHANNEL}|{A_CODEC}|{A_CODEC2}|{A_BRATE}|{A_ALIGNMENT}|{A_DELAY_MS}')
     cfg.pattern_template['ENCODE'] = _mycfg.PatternTemplate( 'ENCODE', '{BITRATE}|{AVS_TEMPLATE}|{INDEX_JOB}|{VIDEO_PASS}|{AUDIO_ENCODE}|{MUX_JOB}' )
     p_detect = cfg.pattern_template['DETECT'].parse_pattern( cfg.config['DETECT'][None], strictError = True )
@@ -149,12 +152,12 @@ def main():
 
     """ PHASE1: Collect Info """
     process_queue = PHASE1( to_process )
-    exit(1)
+    isDebug = 2
 
     """  PHASE2: Add task """
     print
     PHASE2( process_queue )
-
+    for k,v in p_encode.iteritems(): print k,'=',v
 
 
 ####################################################################
@@ -204,7 +207,7 @@ Audio;|AUDIO|%Channel(s)%|%Codec%|%Codec/String%|%BitRate/String%|%Alignment%|%D
                                     verbose = ( 3 if isDebug else 2 ) )
 
     process_queue = []
-    with my.util.PsuedoMultiThread( processor, max_t=2, shell=processor.shell ) as worker:
+    with my.util.PsuedoMultiThread( processor, max_t=1, shell=processor.shell ) as worker:
       for fname in to_process:
         if os.path.isdir(fname):
             result = my.util.scan_dir( fname,
@@ -220,7 +223,7 @@ Audio;|AUDIO|%Channel(s)%|%Codec%|%Codec/String%|%BitRate/String%|%Alignment%|%D
                 raise _mycfg.StrictError()
 
       for fname in processor.processed:
-        process_queue.append( [ fname, cacheObj.cache[fname] ] )
+        process_queue.append( [ fname, cacheObj.get(fname,check=False) ] )
     return process_queue
 
 
@@ -237,6 +240,7 @@ def PHASE2( process_queue ):
     # FOR EACH QUEUE ITEM:
     for fname, info in process_queue:
         if info in [None,'']:
+            say ("No info for '%s' - skip it", fname)
             continue
 
         # 1) parse mediainfo
@@ -245,14 +249,18 @@ def PHASE2( process_queue ):
             print "^^for file %s" % str_encode(fname,'cp866')
             continue
         parsed_info = parsed_info['_']
+        print parsed_info       #@tsv
 
         # 2) find matched 'detect' patterns
         detected = []
         is_forbid = False
         for pname, pdict in p_detect.iteritems():
-            for k,v in pdict:
+            print "CHECK", pname         #@tsv
+            for k,v in pdict.iteritems(): print k,'=',repr(v)
+            for k,v in pdict.iteritems():
                 if v in [None,'']:
                     continue
+                print "==", k, v, parsed_info.get(k)
                 if k not in parsed_info:
                     break
                 if parsed_info[k] != v:
@@ -325,17 +333,22 @@ def PHASE2( process_queue ):
 def PHASE2_2( detected ):
     global p_encode
 
+    #@tsv
+    print "PHASE2_2", detected
+    exit(1)
+
     # initialize object which do scaning job
     #   (find for given token and given pattern most precise existed correspondance)
-    encoder = _mycfg.Encoding( cfg, cfg.get_opt( mainopts, 'SUFFIX' ) )
+    encoder = _mycfg.Encoding( p_encode, cfg, cfg.get_opt( mainopts, 'SUFFIX' ) )
 
     to_encode = {}                      # to_encode[job_type] = {pname, pvalue, ?adj?, ?tmpl_list? }
     sysPatternList = [ 'BASIC', 'TOP' ]
 
     # OUTER CYCLE: PROCESS EACH TOKEN
-    for p_token_name in p_encode :
+    for p_token_name in cfg.pattern_template['ENCODE']:
         if p_token_name in ['_']:       # skip 'printable value'
             continue
+        print "!!%s" % p_token_name     #@tsv
 
 
         if p_token_name=='{BITRATE}':   # if enforced_bitrate defined, then do not get it from patterns
