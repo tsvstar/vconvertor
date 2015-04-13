@@ -1,4 +1,5 @@
 import re, os.path
+import util
 
 """
 ==========================================================
@@ -56,8 +57,8 @@ def ParseArgv( argv, optdict = {} ):
                 else:
                     keys[v1lower].append(v1lower)
             else:
-                v1, v2 = _mycfg.split_pair( v1, '=' )   # a2) simple --options
-                keys[v1] = v2
+                v1, v2 = split_pair( v1, '=' )   # a2) simple --options
+                keys[v1.upper()] = v2
 
         else:                                           # b) argument
             if v.endswith('"'):
@@ -390,7 +391,9 @@ class ConfigLoader(object):
 
         # load file
         try:
+            print ">",self.tpath, self.tname    #@tsv
             fname = os.path.join( self.tpath, tname )
+            print "+++",fname                   #@tsv
             with open( fname, 'r') as f:
                 self.templates[tname] = f.read()
             if self.isDebug:
@@ -403,7 +406,7 @@ class ConfigLoader(object):
     """
         PURPOSE: load one or multi-pass template
                  (tname or [tname.1pass, tname.2pass, ...] )
-        RETURN: ordered list of templates content
+        RETURN: ordered list of templates content. None on error(not found)
     """
     def load_multi_templates( self, tname, fatal = False ):
         if tname in [None,'','*']:
@@ -413,7 +416,7 @@ class ConfigLoader(object):
 
         loaded = []
         while True:
-            v = self.load_template('%s.%dpass' % (tname,idx), fatal = False )
+            v = self.load_template('%s.%dpass' % (tname,len(loaded)+1), fatal = False )
             if v is None:
                 break
             loaded.append( v )
@@ -469,8 +472,6 @@ class PatternTemplate(object):
         if foundat<0:
             return s, None, foundat
         value = s[:foundat].strip()
-        if value in ['*','?']:
-            value = None
         return value, s[foundat+len(sep):], foundat
 
     # auxilary: find tokens and
@@ -525,6 +526,8 @@ class PatternTemplate(object):
                 if self.isDebug: print "STR=%s"%config[pname]
                 for idx in range(0,len(self.ar_tokens)):
                     value, s, foundat = self._check_sep( self.ar_sep[idx+1], s )
+                    if value in ['*','?']:
+                        value = None
                     if self.isDebug: print "SEP=%s; VALUE=%s; S=%s; FOUND=%d; TO=%s" % (self.ar_sep[idx+1], value,s,foundat,self.ar_tokens[idx])
                     parsed[pname][self.ar_tokens[idx]] = value
                     if strictError and foundat<0:
@@ -539,6 +542,7 @@ class PatternTemplate(object):
                     raise StrictError()
                 del parsed[pname]
                 continue
+            if self.isDebug: print "%s--->%s" % ( pname, str(parsed[pname]) )
         return parsed
 
 
@@ -589,19 +593,29 @@ class Encoding(object):
         rv_adjustment = None
         rv_defaultname = None
 
+        ##print pname1
+        ##if pname1=='':
+        ##    return rv_defaultname, '', rv_adjustment, []
+
         lst1 = pname1.split(':')
+        print lst1
         for idx in range(0,len(lst1)):      # 1. outer loop: iterate up to root pattern ( sony:480:abc -> sony:480 -> sony )
-            pname2 = ':'.join(lst1[:-idx])
+            print lst1[:-idx]
+            pname2 = pname1 if not idx else ':'.join(lst1[:-idx])
 
             for suffix in self.suffix_list: # 2. inner loop: try with and without suffix
 
                     pname3 = pname2 + suffix
 
+                    print "%d;\t%s;\t%s" %(idx,pname2,pname3)
+
                     if ( pname3 not in self.p_encode ): # if no such pattern found
 
                         if ( idx > 0 ):                 # a) truncated name - that is optional try
+                            self.path.append('[?]'+pname3)
                             continue
                         if ( len(suffix) ):             # b) suffix is optional try
+                            self.path.append('[?]'+pname3)
                             continue
                         """
                         if ( isServiceClass and len(suffix) ):  # b) service_pattern with suffix - also optional try
@@ -613,16 +627,17 @@ class Encoding(object):
 
                     self.path.append(pname3)
 
-                    value = self.p_encode[pname3]               # get value and split with adjustment
+                    value = self.p_encode[pname3].get(p_token_name,None)          # get value and split with adjustment
                     if value is None:
                         continue
+                    print value
                     value, adj = split_pair( value, '{' )
                     if adj is not None and adj[-1]!='}':
                         raise StrictError("No enclosing bracket for token '%s' at pattern '%s': %s" %
                                              ( p_token_name, pname3, self.p_encode[pname3] ) )
 
                     if isPositiveInteger:               # specific processing {BITRATE} token. this is integer
-                        brate = my.util.makeint(value)
+                        brate = util.makeint(value)
                         if brate <= 0:
                             continue
                         return ( pname3, brate, None, [] )
@@ -639,8 +654,8 @@ class Encoding(object):
                     if template_name in [None,'*','?']:
                         continue
 
-                    tcontent_list = cfg.load_multi_templates( template_name )
-                    if v is None:
+                    tcontent_list = self.cfg.load_multi_templates( template_name )
+                    if tcontent_list is None:
                         raise StrictError("Fail to load template '%s' for token '%s' at pattern '%s'" % ( template_name, p_token_name, pname3 ))
                     return pname3, value, rv_adjustment, tcontent_list
 

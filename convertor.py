@@ -47,7 +47,7 @@ def main():
 
     	    'FILES_ONLY':    splitl,  		# which files should be processed
     	    'MATCH_ONLY':    splitl,		# if only they are match to any of given template
-    	    'TASK':          vstrip,
+    	    'TASK':          splitl,
 
     	    'ENCODE':        adddict,       # replacing of encoding sequences
     	    'DETECT':        adddict,		# replacing of detect patterns
@@ -62,6 +62,8 @@ def main():
                      "DETECT":	 [ 'dict', False, _mycfg.ConfigLoader.load_pattern_processor],    # [DETECT] contain NAME => VALUE pattern pair
                      "ENCODE":	 [ 'dict', False, _mycfg.ConfigLoader.load_pattern_processor],    # [ENCODE] contain NAME => VALUE pattern pair
     		}
+
+    cfg.tpath = './templates'
 
 
     """ LOAD CONFIG """
@@ -98,6 +100,7 @@ def main():
     mainopts = dict.fromkeys( cfg.opt, '' )                 # initialize dict with '' for all options
     cfg.replace_opt( mainopts, cfg.config[''][None] )       # replace from base section config
     mainopts['TASK'] = keys.get('TASK', mainopts['TASK'])   # replace TASK from ARGV if given
+    print mainopts  #@tsv
     tasks = filter( len, cfg.get_opt(mainopts, 'TASK') )    # filter splited(on parse) list of tasks
     for t in tasks:
         #if isDebug:
@@ -110,6 +113,8 @@ def main():
         cfg.replace_opt( mainopts, cfg.config['TASK'][t] ) # replace from task
     cfg.replace_opt( mainopts, keys ) # replace from given in ARGV options (they have most priority)
 
+    mainopts['MATCH_ONLY'] = set( filter( len, cfg.get_opt( mainopts, 'MATCH_ONLY' ) ) )
+    print mainopts  #@tsv
 
     """ PREPARE PATTERNS """
 
@@ -117,6 +122,8 @@ def main():
     						'{CONTAINER}|VIDEO|{WIDTH}x{HEIGHT}@{FPS}|{V_BRATE} {V_BRATE_TYPE}|{RATIO}|{VCODEC}|{VPROFILE}|{VSCAN_TYPE}|{VSCAN_ORDER}'+
     						'|AUDIO|{A_CHANNEL}|{A_CODEC}|{A_CODEC2}|{A_BRATE}|{A_ALIGNMENT}|{A_DELAY_MS}')
     cfg.pattern_template['ENCODE'] = _mycfg.PatternTemplate( 'ENCODE', '{BITRATE}|{AVS_TEMPLATE}|{INDEX_JOB}|{VIDEO_PASS}|{AUDIO_ENCODE}|{MUX_JOB}' )
+    for k in cfg.pattern_template:
+        cfg.pattern_template[k].isDebug=True
     p_detect = cfg.pattern_template['DETECT'].parse_pattern( cfg.config['DETECT'][None], strictError = True )
     p_encode = cfg.pattern_template['ENCODE'].parse_pattern( cfg.config['ENCODE'][None] )
 
@@ -138,7 +145,6 @@ def main():
     if not os.path.isdir(my.megui.megui_path):
         print "Invalid path to MEGUI (%s)" % my.megui.megui_path
         exit(1)
-
     """
     my.megui.load_jobs()
     if my.megui.dirty:
@@ -157,7 +163,7 @@ def main():
     """  PHASE2: Add task """
     print
     PHASE2( process_queue )
-    for k,v in p_encode.iteritems(): print k,'=',v
+    ##for k,v in p_encode.iteritems(): print k,'=',v
 
 
 ####################################################################
@@ -209,6 +215,8 @@ Audio;|AUDIO|%Channel(s)%|%Codec%|%Codec/String%|%BitRate/String%|%Alignment%|%D
     process_queue = []
     with my.util.PsuedoMultiThread( processor, max_t=1, shell=processor.shell ) as worker:
       for fname in to_process:
+        if not os.path.exists(fname) and fname[-1]=='"': # " at the end could means just that this was finished with \\
+            fname = fname[:-1]
         if os.path.isdir(fname):
             result = my.util.scan_dir( fname,
                             recursive = cfg.get_opt( mainopts, 'RECURSIVE' ),
@@ -237,6 +245,8 @@ def PHASE2( process_queue ):
     print "PHASE 2: Generate tasks"
     global p_detect
 
+    isDebugPhase2 = False
+
     # FOR EACH QUEUE ITEM:
     for fname, info in process_queue:
         if info in [None,'']:
@@ -249,23 +259,31 @@ def PHASE2( process_queue ):
             print "^^for file %s" % str_encode(fname,'cp866')
             continue
         parsed_info = parsed_info['_']
-        print parsed_info       #@tsv
+        if isDebugPhase2: print parsed_info       #@tsv
 
         # 2) find matched 'detect' patterns
         detected = []
         is_forbid = False
         for pname, pdict in p_detect.iteritems():
-            print "CHECK", pname         #@tsv
-            for k,v in pdict.iteritems(): print k,'=',repr(v)
+            if isDebugPhase2:
+                print
+                print "CHECK", pname         #@tsv
+                for k,v in pdict.iteritems(): print k,'=',repr(v)
+
             for k,v in pdict.iteritems():
+                if k in ['_']:
+                    continue
                 if v in [None,'']:
                     continue
-                print "==", k, v, parsed_info.get(k)
+                if isDebugPhase2: print "==", k, v, parsed_info.get(k)
                 if k not in parsed_info:
+                    if isDebugPhase2: print "NOKEY"
                     break
                 if parsed_info[k] != v:
+                    if isDebugPhase2: print "NOTMATCH"
                     break
             else:
+                if isDebugPhase2: print "MATCH TO %s"%pname
                 is_forbid = is_forbid or ( pname if pname.startswith('__forbid') else False )
                 detected.append( pname )
 
@@ -287,6 +305,10 @@ def PHASE2( process_queue ):
             print " >> skipped (match to '%s' pattern)" % (is_forbid)
             continue
 
+        if mainopts['MATCH_ONLY'] and len( set(detected) & mainopts['MATCH_ONLY'] )==0:
+            print " >> skipped( patterns doesn't intersected with ACL list 'MATCH_ONLY')"
+            continue
+
         # 4) apply ENFORCE_PATTERN if given
             # a) if "|pattern1|pattern2|.." - then append
             # b) if "pattern1|pattern2|.."  - then replace
@@ -303,7 +325,7 @@ def PHASE2( process_queue ):
         if to_encode is None:
             continue
 
-        PHASE2_3( to_encode )
+        encode = PHASE2_3( to_encode )
 
 
 
@@ -335,7 +357,6 @@ def PHASE2_2( detected ):
 
     #@tsv
     print "PHASE2_2", detected
-    exit(1)
 
     # initialize object which do scaning job
     #   (find for given token and given pattern most precise existed correspondance)
@@ -345,11 +366,11 @@ def PHASE2_2( detected ):
     sysPatternList = [ 'BASIC', 'TOP' ]
 
     # OUTER CYCLE: PROCESS EACH TOKEN
-    for p_token_name in cfg.pattern_template['ENCODE']:
+    print cfg.pattern_template['ENCODE']
+    for p_token_name in cfg.pattern_template['ENCODE'].ar_tokens:
         if p_token_name in ['_']:       # skip 'printable value'
             continue
         print "!!%s" % p_token_name     #@tsv
-
 
         if p_token_name=='{BITRATE}':   # if enforced_bitrate defined, then do not get it from patterns
             enforced_brate = cfg.get_opt( mainopts, 'ENFORCE_BITRATE' )
@@ -388,7 +409,7 @@ def PHASE2_2( detected ):
                 # a) For BITRATE - try to get default value from options
                 if p_token_name=='{BITRATE}':
                     encoder.path.append('OPTION:BITRATE')
-                    default_brate = cfgcfg.get_opt( mainopts, 'BITRATE' )
+                    default_brate = cfg.get_opt( mainopts, 'BITRATE' )
                     if default_brate <= 0:
                         raise _mycfg.StrictError( "No valid bitrate defined in any encoding patterns or options" )
                     to_encode_cur = { 'pname': 'OPTION:BITRATE',  'pvalue': default_brate }
@@ -396,6 +417,7 @@ def PHASE2_2( detected ):
                 # b) For other cases - error. Should be defined exactly one
                     raise _mycfg.StrictError( "Undefined %s" % p_token_name )
         except _mycfg.StrictError as e:
+            raise   # @tsv
             print " >> skipped (%s)" % str(e)
             if isStrict:
                 raise
@@ -424,6 +446,7 @@ def PHASE2_2( detected ):
 def PHASE2_3( to_encode ):
 
     print "!!TODO!!"
+    exit(1)
     tokenlist = [ "{AVS_TEMPLATE}", "{INDEX_JOB}", "{VIDEO_PASS}",
                             "{AUDIO_ENCODE}","{MUX_JOB}" ]
 
