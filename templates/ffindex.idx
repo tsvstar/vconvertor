@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<TaggedJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Job xsi:type="FFMSIndexJob">
+    <Input>C:\Users\taranenko\YandexDisk\to_copy\MAH06835.MP4</Input>
+    <Output>C:\Users\taranenko\YandexDisk\to_copy\MAH06835.MP4.ffindex</Output>
+    <FilesToDelete />
+    <LoadSources>false</LoadSources>
+    <DemuxVideo>false</DemuxVideo>
+    <DemuxMode>0</DemuxMode>
+    <AudioTracks />
+    <AudioTracksDemux />
+  </Job>
+  <RequiredJobNames />
+  <EnabledJobNames />
+  <Name>job3</Name>
+  <Status>DONE</Status>
+  <Start>2015-04-14T11:24:27.6254282+03:00</Start>
+  <End>2015-04-14T11:24:28.4467488+03:00</End>
+</TaggedJob>

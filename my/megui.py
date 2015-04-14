@@ -1,6 +1,90 @@
 import re, os.path
 import my.util
 
+#https://docs.python.org/2/library/xml.etree.elementtree.html
+import xml.etree.ElementTree as ET
+
+megui_path = None
+
+re_job = re.compile('^job([0-9]+)\.xml$', flags = re.IGNORECASE )
+re_jobtext = re.compile('job([0-9]+)', flags = re.IGNORECASE )
+
+def _get_elem( xml, name ):
+    for elem in xml.iter(name):
+        return elem
+    return None
+
+class JobList(object):
+    def __init__( self ):
+        self.fname = os.path.join( megui_path, 'joblists.xml' )
+        self.tree = ET.parse(self.fname)
+
+        self.joblist = _get_elem( self.tree.getroot(), 'mainJobList' )
+        self.dirty = False
+        self.findMaxJobNum()
+        #for child in self.joblist:
+        #    print child.tag, '|', child.attrib, '|', child.text
+
+    def __del__(self):
+        self.save()
+    def __enter__(self, *kw,**kww):
+        pass
+    def __exit__(self, *kw,**kww):
+        self.save()
+
+    # return as ordered by appearance list
+    def getJoblist(self):
+        return map( lambda c: c.text, self.joblist )
+
+    def findMaxJobNum(self):
+        self.jobnum = 0
+        for c in self.joblist:
+            m = re_jobtext.match( c.text )
+            if m:
+                val = int(m.group(1))+1
+                if val>self.jobnum:
+                    self.jobnum = val
+
+    def save(self):
+        self.tree.write(self.fname, 'utf-8')
+        self.dirty = False
+
+    def addJob( self, jobname ):
+        job = ET.SubElement(self.joblist, 'string')
+        job.text = jobname
+        self.dirty = True
+
+    def addJobXML( self, xmlContent, required=[] ):
+        jobname = "job%04d" % jobnum
+        _get_elem(xmlContent,'Name').text   = jobname
+        _get_elem(xmlContent,'Status').text = 'WAITING'
+        _get_elem(xmlContent,'Start').text  = '0001-01-01T00:00:00'
+        _get_elem(xmlContent,'End').text    = '0001-01-01T00:00:00'
+        reqElement = _get_elem(xmlContent,'RequiredJobNames')
+        for j in reqElement:
+            reqElement.remove(j)
+        for j in required:
+            elem = ET.SubElement(reqElement, 'string')
+            elem.text = 'job%04d'%(jobnum+j)
+        jobnum += 1
+        targetname = os.path.join( megui_path, jobname+'.xml' )
+        xml.write(targetname)
+
+    def delJob( self, jobname ):
+        todel = []
+        for elem in self.joblist:
+            if elem.text==jobname:
+                todel.append(elem)
+        for elem in todel:
+            self.joblist.remove(elem)
+            self.dirty = True
+
+
+#ET.fromstring(country_data_as_string)
+#tree = ET.parse('country_data.xml')
+#root = tree.getroot()
+
+
 """
 ==========================================================
 
@@ -21,7 +105,6 @@ jobs = []		                     # Ordered content of '<mainJobList>' in'joblists
 max_jobnumber = 0
 dirty = False
 
-re_job = re.compile('^job([0-9]+)\.xml$', flags = re.IGNORECASE )
 re_jobxml = re.compile('<string>job([0-9]+)</string>$', flags = re.IGNORECASE )
 
 def get_path():

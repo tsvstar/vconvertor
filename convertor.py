@@ -145,6 +145,7 @@ def main():
     if not os.path.isdir(my.megui.megui_path):
         print "Invalid path to MEGUI (%s)" % my.megui.megui_path
         exit(1)
+    my.megui.JobList()
     """
     my.megui.load_jobs()
     if my.megui.dirty:
@@ -456,6 +457,11 @@ def PHASE2_3( to_encode ):
     # prepare jobs
     jobs = []
 
+    """   <Name>job2</Name>
+  <Status>WAITING</Status>
+  <Start>0001-01-01T00:00:00</Start>
+  <End>0001-01-01T00:00:00</End>
+"""
     # add jobs
     for j in jobs:
         my.megui.add_job( j )
