@@ -377,6 +377,7 @@ class ConfigLoader(object):
         RETURN: content of template
     """
     def load_template( self, tname, fatal = True ):
+        print "load>",self.tpath, tname    #@tsv
         # found in cache
         if tname in self.templates:
             return self.templates[tname]
@@ -391,7 +392,7 @@ class ConfigLoader(object):
 
         # load file
         try:
-            print ">",self.tpath, self.tname    #@tsv
+            print "load>",self.tpath, tname    #@tsv
             fname = os.path.join( self.tpath, tname )
             print "+++",fname                   #@tsv
             with open( fname, 'r') as f:
@@ -550,7 +551,12 @@ class PatternTemplate(object):
 """
 ===============================================================
             LOOKING UP ENCODING
-???? TODO DESCRIPTION
+
+Helper class, which scans given pattern from given form up to
+more common to find one with defined value
+
+EXAMPLE for 'sony:720' and suffix '.old':
+    [sony:720.old] -> sony:720 -> [sony.old] -> [sony]
 
 ===============================================================
 """
@@ -570,8 +576,6 @@ class Encoding(object):
         ##self.verbose = verbose
 
     # FIND VALID TOKEN
-    # EXAMPLE for 'sony:720' and suffix '.old':
-    #       [sony:720.old] -> sony:720 -> [sony.old] -> [sony]
     #
     # ARGUMENTS:
     #   pname        = name of encoding pattern         (example - sony:480,..)
