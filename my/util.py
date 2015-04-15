@@ -20,6 +20,14 @@ def makeint( value, default = 0 ):
     try: return int(value)
     except: return default
 
+def makebool( value, default = True ):
+    value = value.lower()
+    if value in ['y','yes','t','true']:
+        return True
+    if value in ['n','no','f','false']:
+        return False
+    return makeint( value, default )
+
 # PURPOSE: split "value"(raw or splited string) with separator list "sep_list"
 #               + remove empty entries (except leading)
 def splitl( value, sep_list = [ '|', '+' ], removeEmpty = False ):

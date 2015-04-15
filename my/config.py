@@ -32,6 +32,23 @@ def split_pair( s, sep, strip = True ):
         a += [None]
     return a
 
+# Prepare windows taken ARGV.
+#    >> script "drive:\path\to\dir\" key
+#  incorrectly treated as single arg 'drive:\path\to\dir" key'
+def prepareARGV( argv ):
+    res = ['']
+    for a in argv:
+        idx = a.find('" ')
+        print a, idx
+        if idx<0:
+            res[-1] += a
+            res.append('')
+            continue
+        res[-1] += a[:idx] + '\\'
+        res.append( a[idx+1:].lstrip() )
+    return filter( len, res )
+
+
 # Simple argument parser with unknown list of options (all --key are treated as option,
 #       all other as arguments).
 # ARGUMENTS:

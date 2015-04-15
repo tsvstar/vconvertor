@@ -9,17 +9,16 @@
 #TODO: adjustment -- give path in XML to fix (  DAR:AR=@{RATIO}@|DAR:X=@{AR_X}@|DAR:Y=@{AR_Y}@ )
 #TODO: adjustment -- can have +=
 
-#TODO: @SRCPATH@, @SRCPATH_VIDEO@(get from <output> of last pass of video job or src video), @SRCPATH_AUDIO@ (get from output of audio job or src video), @BITRATE@, @MEGUI@, @{TOKEN}@
+#TODO: @SRCPATH@, @SRC_PATH_WO_EXT@, @SRCPATH_VIDEO@(get from <output> of last pass of video job or src video), @SRCPATH_AUDIO@ (get from output of audio job or src video), @BITRATE@, @MEGUI@, @{TOKEN}@
 #TODO: option - delete temporary files (video+audio+stat [?stat del-is defined right in job])
 
 #TODO: if token name starts from {!}  - case insensetive comparision
-#THE BUG: - why {A_DELAY_MS} = '?' ??? it should become None
 
-import os,sys
+import os, sys, copy
 import my.config as _mycfg
 import my.megui
 import my.util
-from my.util import makeint, splitl, adddict, vstrip
+from my.util import makeint, makebool, splitl, adddict, vstrip
 
 ################################
 
@@ -29,7 +28,9 @@ def main():
 
     """ LOAD ARGV """
     my.util.prepare_console()
-    keys, to_process = _mycfg.ParseArgv( sys.argv[1:], optdict={ 'debug':0, 'strict':0} )
+    argv = _mycfg.prepareARGV( sys.argv[1:] )
+    print argv
+    keys, to_process = _mycfg.ParseArgv( argv, optdict={ 'debug':0, 'strict':0} )
     isDebug, isStrict = keys['debug'], keys['strict']
 
     if isDebug:
@@ -41,13 +42,13 @@ def main():
     """ DESCRIBE CONFIG """
 
     cfg = _mycfg.ConfigLoader( isDebug = isDebug )
-    cfg.opt = { 'ENFORCE_BITRATE':  makeint,	# If defined and valid, that means "I surely know which video bitrate I'd like to have"
-    	    'ENFORCE_PATTERN': splitl,		# If defined, that means "I know which exactly templates should be used"
+    cfg.opt = { 'ENFORCE_BITRATE':  makeint, # If defined and valid, that means "I surely know which video bitrate I'd like to have"
+    	    'ENFORCE_PATTERN': splitl,		 # If defined, that means "I know which exactly templates should be used"
 
     	    'BITRATE':       makeint,		# Default value of bitrate (used if no correct defined in any matched template)
-    	    'RECURSIVE':     makeint,		# is recursive scan for source files
-    	    'AVS_OVERWRITE': makeint,     	# Should .AVS be overwrited
-    	    'INDEX_ONLY':    makeint,		# Should only AVS+index job be created
+    	    'RECURSIVE':     makebool,		# is recursive scan for source files
+    	    'AVS_OVERWRITE': makebool,     	# Should .AVS be overwrited
+    	    'INDEX_ONLY':    makebool,		# Should only AVS+index job be created
     	    'EXTRA_AVS':     splitl,    	# if not empty, then add to .AVS file correspondend [EXTRA_AVS=xxx] section. Could be several: extra1+extra2+...
     	    'SUFFIX':	     vstrip,		# suffix for template (if defined will try to use 'name.suffix' template first; '.old' )
 
@@ -58,7 +59,7 @@ def main():
     	    'ENCODE':        adddict,       # replacing of encoding sequences
     	    'DETECT':        adddict,		# replacing of detect patterns
 
-    	    'MEGUI':         vstrip,		# ??replacing of detect patterns
+    	    'MEGUI':         vstrip,		# path to MEGUI
     	   }
 
     # sections[sectype] = [ datatype, isname_required, proccessor]
@@ -128,8 +129,8 @@ def main():
     						'{CONTAINER}|VIDEO|{WIDTH}x{HEIGHT}@{FPS}|{V_BRATE} {V_BRATE_TYPE}|{RATIO}={AR_X}:{AR_Y}|{VCODEC}|{VPROFILE}|{VSCAN_TYPE}|{VSCAN_ORDER}'+
     						'|AUDIO|{A_CHANNEL}|{A_CODEC}|{A_CODEC2}|{A_BRATE}|{A_ALIGNMENT}|{A_DELAY_MS}')
     cfg.pattern_template['ENCODE'] = _mycfg.PatternTemplate( 'ENCODE', '{BITRATE}|{AVS_TEMPLATE}|{INDEX_JOB}|{VIDEO_PASS}|{AUDIO_ENCODE}|{MUX_JOB}' )
-    for k in cfg.pattern_template:
-        cfg.pattern_template[k].isDebug=True
+    ##for k in cfg.pattern_template:              # @tsv
+    ##    cfg.pattern_template[k].isDebug=True
     p_detect = cfg.pattern_template['DETECT'].parse_pattern( cfg.config['DETECT'][None], strictError = True )
     p_encode = cfg.pattern_template['ENCODE'].parse_pattern( cfg.config['ENCODE'][None] )
 
@@ -144,24 +145,25 @@ def main():
 
     """ LOAD + REPAIR MEGUI JOBLIST """
     print "Load joblist"
-    my.megui.megui_path = cfg.get_opt( mainopts, 'MEGUI' )
+    my.megui.megui_path = cfg.get_opt( mainopts, 'MEGUI' ).rstrip("\\/")+"\\"
     if not len(my.megui.megui_path):
         print "No path to MEGUI defined"
         exit(1)
     if not os.path.isdir(my.megui.megui_path):
         print "Invalid path to MEGUI (%s)" % my.megui.megui_path
         exit(1)
-    my.megui.JobList()
-    """
-    my.megui.load_jobs()
-    if my.megui.dirty:
+    joblist = my.megui.JobList()
+    ##my.megui.print_xml(joblist.tree._root)    #@tsv
+    my.megui.load_jobdir(joblist)
+    if joblist.dirty:
         print "Restore missed jobs"
-        my.megui.save_jobs()
-    """
+        joblist.save()
 
     if len(to_process)==0:
         print "No source given"
         exit()
+
+    print get_args(False)
 
     """ PHASE1: Collect Info """
     process_queue = PHASE1( to_process )
@@ -171,6 +173,20 @@ def main():
     print
     PHASE2( process_queue )
     ##for k,v in p_encode.iteritems(): print k,'=',v
+
+from ctypes import *
+def get_args( delFirst = True ):
+
+    size = c_int()
+    ptr = windll.shell32.CommandLineToArgvW(windll.kernel32.GetCommandLineW(), byref(size))
+    ref = c_wchar_p * size.value
+    raw = ref.from_address(ptr)
+    args = [arg for arg in raw]
+    windll.kernel32.LocalFree(ptr)
+    if delFirst and len(args)>1:
+      if args[1]==sys.argv[0].decode('cp1251','ignore'):
+        args = args[1:]
+    return args
 
 
 ####################################################################
@@ -332,7 +348,7 @@ def PHASE2( process_queue ):
         if to_encode is None:
             continue
 
-        encode = PHASE2_3( to_encode )
+        encode = PHASE2_3( fname, to_encode, parsed_info )
 
 
 
@@ -450,10 +466,83 @@ def PHASE2_2( detected ):
     ********** PHASE 2_3: GENERATE MEGUI TASK **************
 """
 
-def PHASE2_3( to_encode ):
+def PHASE2_3( fname, to_encode, info ):
 
+
+    print "PHASE2_3"
+    print "fname", fname
+    print "to_encode", to_encode
+    print "info", info
     print "!!TODO!!"
+
+    keys = { '@SRCPATH@': fname,                                # source file
+             '@SRC_PATH_WO_EXT@': os.path.splitext(fname)[0],   # source file without extension
+             '@SRCPATH_VIDEO@': fname,                          # intermediary video file
+             '@SRCPATH_AUDIO@': fname,                          # intermediary audio file
+             '@MEGUI@': my.megui.megui_path,
+             '@BITRATE@': to_encode.get("{BITRATE}",{}).get("pvalue",0)
+    }
+    for k,v in info.iteritems():
+        keys["@%s@"%k] = v
+    for k,v in keys.iteritems():
+        print k,v
+
     exit(1)
+
+    def getEncodeTokens( tokenname ):
+        d = to_encode.get( tokenname, {})
+        # get values
+        detect_pattern = d.get('pname','')
+        encode_pattern = d.get('pvalue','')
+        content = filter(len, d.get('tmpl_list',[]) )
+        adj = filter(len, d.get('adj',[]) )
+
+        # prepare by keys
+        for idx in range(0,len(content)):
+            for src, dst in keys.iteritems():
+                content[idx] = content[idx].replace(src,dst)
+
+        # do copy of main opts and fill from adjustments
+        optscopy = copy.deepcopy( mainopts )
+
+        #TODO!!!!
+
+        return detect_pattern, encode_pattern, content, adj, optscopy
+
+#to_encode {'{BITRATE}': {'pname': 'OPTION:BITRATE', 'pvalue': 1500},
+#'{AVS_TEMPLATE}': {'pname': '__dga', 'pvalue': 'dga.avs', 'tmpl_list': ['LoadPlugin("@MEGUI@/tools/dgavcindex/DGAVCDecode.dll")\nAVCSource("@SRCPATH@.dga")\n']},
+#'{INDEX_JOB}': {'pname': '__dga', 'pvalue': 'dga.idx', 'tmpl_list': ['<?xml version="1.0"?>\n<TaggedJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n  <EncodingSpeed />\n  <Job xsi:type="DGAIndexJob">\n    <Input>@SRC_PATH@</Input>\n    <Output>@SRC_PATH@.dga</Output>\n    <FilesToDelete>\n      <string>@SRC_PATH_WO_EXT@.log</string>\n    </FilesToDelete>\n    <LoadSources>false</LoadSources>\n    <DemuxVideo>false</DemuxVideo>\n    <DemuxMode>0</DemuxMode>\n    <AudioTracks />\n    <AudioTracksDemux />\n  </Job>\n  <RequiredJobNames />\n  <EnabledJobNames />\n  <Name>job9</Name>\n  <Status>WAITING</Status>\n  <Start>0001-01-01T00:00:00</Start>\n  <End>0001-01-01T00:00:00</End>\n</TaggedJob>']},
+#'{VIDEO_PASS}': {'pname': 'BASIC', 'pvalue': 'x264base', 'tmpl_list': ['<?xml version="1.0"?>\n<TaggedJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n  <EncodingSpeed />\n  <Job xsi:type="VideoJob">\n    <Input>@SRCPATH@.avs</Input>\n    <Output />\n    <FilesToDelete />\n    <Zones />\n    <DAR />\n    <Settings xsi:type="x264Settings">\n      <EncodingMode>2</EncodingMode>\n      <BitrateQuantizer>1000</BitrateQuantizer>\n      <KeyframeInterval>250</KeyframeInterval>\n      <NbBframes>3</NbBframes>\n      <MinQuantizer>0</MinQuantizer>\n      <MaxQuantizer>69</MaxQuantizer>\n      <V4MV>false</V4MV>\n      <QPel>false</QPel>\n      <Trellis>false</Trellis>\n      <CreditsQuantizer>40</CreditsQuantizer>\n      <Logfile>@SRCPATH@.stats</Logfile>\n      <VideoName />\n      <CustomEncoderOptions />\n      <FourCC>0</FourCC>\n      <MaxNumberOfPasses>3</MaxNumberOfPasses>\n      <NbThreads>0</NbThreads>\n      <x264PresetLevel>medium</x264PresetLevel>\n      <x264PsyTuning>NONE</x264PsyTuning>\n      <QuantizerCRF>1000</QuantizerCRF>\n      <InterlacedMode>progressive</InterlacedMode>\n      <TargetDeviceXML>0</TargetDeviceXML>\n      <BlurayCompatXML>False</BlurayCompatXML>\n      <NoDCTDecimate>false</NoDCTDecimate>\n      <PSNRCalculation>false</PSNRCalculation>\n      <NoFastPSkip>false</NoFastPSkip>\n      <NoiseReduction>0</NoiseReduction>\n      <NoMixedRefs>false</NoMixedRefs>\n      <X264Trellis>1</X264Trellis>\n      <NbRefFrames>3</NbRefFrames>\n      <AlphaDeblock>0</AlphaDeblock>\n      <BetaDeblock>0</BetaDeblock>\n      <SubPelRefinement>7</SubPelRefinement>\n      <MaxQuantDelta>4</MaxQuantDelta>\n      <TempQuantBlur>0</TempQuantBlur>\n      <BframePredictionMode>1</BframePredictionMode>\n      <VBVBufferSize>0</VBVBufferSize>\n      <VBVMaxBitrate>0</VBVMaxBitrate>\n      <METype>1</METype>\n      <MERange>16</MERange>\n      <MinGOPSize>25</MinGOPSize>\n      <IPFactor>1.4</IPFactor>\n      <PBFactor>1.3</PBFactor>\n      <ChromaQPOffset>0</ChromaQPOffset>\n      <VBVInitialBuffer>0.9</VBVInitialBuffer>\n      <BitrateVariance>1.0</BitrateVariance>\n      <QuantCompression>0.6</QuantCompression>\n      <TempComplexityBlur>20</TempComplexityBlur>\n      <TempQuanBlurCC>0.5</TempQuanBlurCC>\n      <SCDSensitivity>40</SCDSensitivity>\n      <BframeBias>0</BframeBias>\n      <PsyRDO>1.0</PsyRDO>\n      <PsyTrellis>0</PsyTrellis>\n      <Deblock>true</Deblock>\n      <Cabac>true</Cabac>\n      <UseQPFile>false</UseQPFile>\n      <WeightedBPrediction>true</WeightedBPrediction>\n      <WeightedPPrediction>2</WeightedPPrediction>\n      <NewAdaptiveBFrames>1</NewAdaptiveBFrames>\n      <x264BFramePyramid>2</x264BFramePyramid>\n      <x264GOPCalculation>1</x264GOPCalculation>\n      <ChromaME>true</ChromaME>\n      <MacroBlockOptions>3</MacroBlockOptions>\n      <P8x8mv>true</P8x8mv>\n      <B8x8mv>true</B8x8mv>\n      <I4x4mv>true</I4x4mv>\n      <I8x8mv>true</I8x8mv>\n      <P4x4mv>false</P4x4mv>\n      <AdaptiveDCT>true</AdaptiveDCT>\n      <SSIMCalculation>false</SSIMCalculation>\n      <StitchAble>false</StitchAble>\n      <QuantizerMatrix>Flat (none)</QuantizerMatrix>\n      <QuantizerMatrixType>0</QuantizerMatrixType>\n      <DeadZoneInter>21</DeadZoneInter>\n      <DeadZoneIntra>11</DeadZoneIntra>\n      <X26410Bits>true</X26410Bits>\n      <OpenGop>False</OpenGop>\n      <X264PullDown>0</X264PullDown>\n      <SampleAR>0</SampleAR>\n      <ColorMatrix>0</ColorMatrix>\n      <ColorPrim>0</ColorPrim>\n      <Transfer>0</Transfer>\n      <AQmode>1</AQmode>\n      <AQstrength>1.0</AQstrength>\n      <QPFile />\n      <Range>auto</Range>\n      <x264AdvancedSettings>true</x264AdvancedSettings>\n      <Lookahead>40</Lookahead>\n      <NoMBTree>true</NoMBTree>\n      <ThreadInput>true</ThreadInput>\n      <NoPsy>false</NoPsy>\n      <Scenecut>true</Scenecut>\n      <Nalhrd>0</Nalhrd>\n      <X264Aud>false</X264Aud>\n      <X264SlowFirstpass>false</X264SlowFirstpass>\n      <PicStruct>false</PicStruct>\n      <FakeInterlaced>false</FakeInterlaced>\n      <NonDeterministic>false</NonDeterministic>\n      <SlicesNb>0</SlicesNb>\n      <MaxSliceSyzeBytes>0</MaxSliceSyzeBytes>\n      <MaxSliceSyzeMBs>0</MaxSliceSyzeMBs>\n      <Profile>2</Profile>\n      <AVCLevel>L_UNRESTRICTED</AVCLevel>\n      <TuneFastDecode>false</TuneFastDecode>\n      <TuneZeroLatency>false</TuneZeroLatency>\n    </Settings>\n  </Job>\n  <RequiredJobNames />\n  <EnabledJobNames>\n    <string>job5</string>\n  </EnabledJobNames>\n  <Name>job4</Name>\n  <Status>WAITING</Status>\n  <Start>0001-01-01T00:00:00</Start>\n  <End>0001-01-01T00:00:00</End>\n</TaggedJob>',
+#                                                                       '<?xml version="1.0"?>\n<TaggedJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n  <EncodingSpeed />\n  <Job xsi:type="VideoJob">\n    <Input>@SRCPATH@.avs</Input>\n    <Output>@SRCPATH@.264</Output>\n    <FilesToDelete>\n      <string>@SRCPATH@.stats</string>\n      <string>@SRCPATH@.stats.mbtree</string>\n    </FilesToDelete>\n    <Zones />\n    <DAR />\n    <Settings xsi:type="x264Settings">\n      <EncodingMode>3</EncodingMode>\n      <BitrateQuantizer>1000</BitrateQuantizer>\n      <KeyframeInterval>250</KeyframeInterval>\n      <NbBframes>3</NbBframes>\n      <MinQuantizer>0</MinQuantizer>\n      <MaxQuantizer>69</MaxQuantizer>\n      <V4MV>false</V4MV>\n      <QPel>false</QPel>\n      <Trellis>false</Trellis>\n      <CreditsQuantizer>40</CreditsQuantizer>\n      <Logfile>@SRCPATH@.stats</Logfile>\n      <VideoName />\n      <CustomEncoderOptions />\n      <FourCC>0</FourCC>\n      <MaxNumberOfPasses>3</MaxNumberOfPasses>\n      <NbThreads>0</NbThreads>\n      <x264PresetLevel>medium</x264PresetLevel>\n      <x264PsyTuning>NONE</x264PsyTuning>\n      <QuantizerCRF>1000</QuantizerCRF>\n      <InterlacedMode>progressive</InterlacedMode>\n      <TargetDeviceXML>0</TargetDeviceXML>\n      <BlurayCompatXML>False</BlurayCompatXML>\n      <NoDCTDecimate>false</NoDCTDecimate>\n      <PSNRCalculation>false</PSNRCalculation>\n      <NoFastPSkip>false</NoFastPSkip>\n      <NoiseReduction>0</NoiseReduction>\n      <NoMixedRefs>false</NoMixedRefs>\n      <X264Trellis>1</X264Trellis>\n      <NbRefFrames>3</NbRefFrames>\n      <AlphaDeblock>0</AlphaDeblock>\n      <BetaDeblock>0</BetaDeblock>\n      <SubPelRefinement>7</SubPelRefinement>\n      <MaxQuantDelta>4</MaxQuantDelta>\n      <TempQuantBlur>0</TempQuantBlur>\n      <BframePredictionMode>1</BframePredictionMode>\n      <VBVBufferSize>0</VBVBufferSize>\n      <VBVMaxBitrate>0</VBVMaxBitrate>\n      <METype>1</METype>\n      <MERange>16</MERange>\n      <MinGOPSize>25</MinGOPSize>\n      <IPFactor>1.4</IPFactor>\n      <PBFactor>1.3</PBFactor>\n      <ChromaQPOffset>0</ChromaQPOffset>\n      <VBVInitialBuffer>0.9</VBVInitialBuffer>\n      <BitrateVariance>1.0</BitrateVariance>\n      <QuantCompression>0.6</QuantCompression>\n      <TempComplexityBlur>20</TempComplexityBlur>\n      <TempQuanBlurCC>0.5</TempQuanBlurCC>\n      <SCDSensitivity>40</SCDSensitivity>\n      <BframeBias>0</BframeBias>\n      <PsyRDO>1.0</PsyRDO>\n      <PsyTrellis>0</PsyTrellis>\n      <Deblock>true</Deblock>\n      <Cabac>true</Cabac>\n      <UseQPFile>false</UseQPFile>\n      <WeightedBPrediction>true</WeightedBPrediction>\n      <WeightedPPrediction>2</WeightedPPrediction>\n      <NewAdaptiveBFrames>1</NewAdaptiveBFrames>\n      <x264BFramePyramid>2</x264BFramePyramid>\n      <x264GOPCalculation>1</x264GOPCalculation>\n      <ChromaME>true</ChromaME>\n      <MacroBlockOptions>3</MacroBlockOptions>\n      <P8x8mv>true</P8x8mv>\n      <B8x8mv>true</B8x8mv>\n      <I4x4mv>true</I4x4mv>\n      <I8x8mv>true</I8x8mv>\n      <P4x4mv>false</P4x4mv>\n      <AdaptiveDCT>true</AdaptiveDCT>\n      <SSIMCalculation>false</SSIMCalculation>\n      <StitchAble>false</StitchAble>\n      <QuantizerMatrix>Flat (none)</QuantizerMatrix>\n      <QuantizerMatrixType>0</QuantizerMatrixType>\n      <DeadZoneInter>21</DeadZoneInter>\n      <DeadZoneIntra>11</DeadZoneIntra>\n      <X26410Bits>true</X26410Bits>\n      <OpenGop>False</OpenGop>\n      <X264PullDown>0</X264PullDown>\n      <SampleAR>0</SampleAR>\n      <ColorMatrix>0</ColorMatrix>\n      <ColorPrim>0</ColorPrim>\n      <Transfer>0</Transfer>\n      <AQmode>1</AQmode>\n      <AQstrength>1.0</AQstrength>\n      <QPFile />\n      <Range>auto</Range>\n      <x264AdvancedSettings>true</x264AdvancedSettings>\n      <Lookahead>40</Lookahead>\n      <NoMBTree>true</NoMBTree>\n      <ThreadInput>true</ThreadInput>\n      <NoPsy>false</NoPsy>\n      <Scenecut>true</Scenecut>\n      <Nalhrd>0</Nalhrd>\n      <X264Aud>false</X264Aud>\n      <X264SlowFirstpass>false</X264SlowFirstpass>\n      <PicStruct>false</PicStruct>\n      <FakeInterlaced>false</FakeInterlaced>\n      <NonDeterministic>false</NonDeterministic>\n      <SlicesNb>0</SlicesNb>\n      <MaxSliceSyzeBytes>0</MaxSliceSyzeBytes>\n      <MaxSliceSyzeMBs>0</MaxSliceSyzeMBs>\n      <Profile>2</Profile>\n      <AVCLevel>L_UNRESTRICTED</AVCLevel>\n      <TuneFastDecode>false</TuneFastDecode>\n      <TuneZeroLatency>false</TuneZeroLatency>\n    </Settings>\n  </Job>\n  <RequiredJobNames>\n    <string>job4</string>\n  </RequiredJobNames>\n  <EnabledJobNames />\n  <Name>job5</Name>\n  <Status>WAITING</Status>\n  <Start>0001-01-01T00:00:00</Start>\n  <End>0001-01-01T00:00:00</End>\n</TaggedJob>']},
+#'{AUDIO_ENCODE}': {'pname': 'BASIC', 'pvalue': 'aac_base', 'tmpl_list': ['<?xml version="1.0"?>\n<TaggedJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n  <EncodingSpeed />\n  <Job xsi:type="AudioJob">\n    <Input>@SRCPATH@</Input>\n    <Output>@SRCPATH@.tmp.mp4</Output>\n    <FilesToDelete />\n    <CutFile />\n    <Settings xsi:type="NeroAACSettings">\n      <PreferredDecoderString>NicAudio</PreferredDecoderString>\n      <DownmixMode>KeepOriginal</DownmixMode>\n      <BitrateMode>ABR</BitrateMode>\n      <Bitrate>125</Bitrate>\n      <AutoGain>false</AutoGain>\n      <SampleRateType>deprecated</SampleRateType>\n      <SampleRate>KeepOriginal</SampleRate>\n      <TimeModification>KeepOriginal</TimeModification>\n      <ApplyDRC>false</ApplyDRC>\n      <Normalize>100</Normalize>\n      <CustomEncoderOptions />\n      <Profile>Auto</Profile>\n      <Quality>0.5</Quality>\n      <CreateHintTrack>false</CreateHintTrack>\n    </Settings>\n    <Delay>0</Delay>\n    <SizeBytes>0</SizeBytes>\n    <BitrateMode>CBR</BitrateMode>\n  </Job>\n  <RequiredJobNames />\n  <EnabledJobNames />\n  <Name>job4</Name>\n  <Status>DONE</Status>\n  <Start>2015-04-15T08:05:24.356619+03:00</Start>\n  <End>2015-04-15T08:05:25.8208021+03:00</End>\n</TaggedJob>']},
+#'{MUX_JOB}': {'pname': 'BASIC', 'pvalue': 'mkvmux', 'tmpl_list': ['<?xml version="1.0"?>\n<TaggedJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n  <EncodingSpeed />\n  <Job xsi:type="MuxJob">\n    <Input>@SRCPATH_VIDEO@</Input>\n    <Output>@SRCPATH@-mux@BITRATE@.mkv</Output>\n    <FilesToDelete />\n    <ContainerTypeString>MKV</ContainerTypeString>\n    <Codec />\n    <NbOfBFrames>0</NbOfBFrames>\n    <NbOfFrames>0</NbOfFrames>\n    <Bitrate>0</Bitrate>\n    <Overhead>4.3</Overhead>\n    <Settings>\n      <MuxedInput />\n      <MuxedOutput>@SRCPATH@-mux@BITRATE@.mkv</MuxedOutput>\n      <VideoInput>@SRCPATH_VIDEO@</VideoInput>\n      <AudioStreams>\n        <MuxStream>\n          <path>@SRCPATH_AUDIO@</path>\n          <delay>0</delay>\n          <bDefaultTrack>false</bDefaultTrack>\n          <bForceTrack>false</bForceTrack>\n          <language />\n          <name />\n        </MuxStream>\n      </AudioStreams>\n      <SubtitleStreams />\n      <Framerate>25.0</Framerate>\n      <ChapterFile />\n      <SplitSize xsi:nil="true" />\n      <DAR xsi:nil="true" />\n      <DeviceType>Standard</DeviceType>\n      <VideoName />\n      <MuxAll>false</MuxAll>\n    </Settings>\n    <MuxType>MKVMERGE</MuxType>\n  </Job>\n  <RequiredJobNames />\n  <EnabledJobNames />\n  <Name>job10</Name>\n  <Status>WAITING</Status>\n  <Start>0001-01-01T00:00:00</Start>\n  <End>0001-01-01T00:00:00</End>\n</TaggedJob>']}}
+
+
+
+    # PROCESS {AVS_TEMPLATE}
+    detect_pname, encode_pname, content, adj, opts  = getEncodeTokens( '{AVS_TEMPLATE}' )
+    if len(content)==0:
+        print "ERROR: Empty {AVS_TEMPLATE} %s %s" % (detect_pname, encode_pname)
+        return
+
+    extra_avs =  filter( len, cfg.get_opt( opts, 'EXTRA_AVS' ) )
+    for idx in range(0, len(content)):
+        for section in extra_avs:
+            content[idx] += "\n" + cfg.config['EXTRA_AVS'].get(section,"")  # TODO!!!
+
+
+
+
+    # PROCESS INDEX_JOB
+
+
+
+    #'pname': '__dga', 'pvalue': 'dga.avs', 'tmpl_list'
+
+    #
+
+    globals
+
     tokenlist = [ "{AVS_TEMPLATE}", "{INDEX_JOB}", "{VIDEO_PASS}",
                             "{AUDIO_ENCODE}","{MUX_JOB}" ]
 

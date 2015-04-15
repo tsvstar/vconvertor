@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<TaggedJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <EncodingSpeed />
+  <Job xsi:type="DGAIndexJob">
+    <Input>@SRC_PATH@</Input>
+    <Output>@SRC_PATH@.dga</Output>
+    <FilesToDelete>
+      <string>@SRC_PATH_WO_EXT@.log</string>
+    </FilesToDelete>
+    <LoadSources>false</LoadSources>
+    <DemuxVideo>false</DemuxVideo>
+    <DemuxMode>0</DemuxMode>
+    <AudioTracks />
+    <AudioTracksDemux />
+  </Job>
+  <RequiredJobNames />
+  <EnabledJobNames />
+  <Name>job9</Name>
+  <Status>WAITING</Status>
+  <Start>0001-01-01T00:00:00</Start>
+  <End>0001-01-01T00:00:00</End>
+</TaggedJob>
