@@ -6,6 +6,12 @@
 #TODO: alternate syntax ( NAME @=> name=val1|name2>=val2,name2<=val2_1 )
 #TODO: multiple matches to same pattern(for detect)
 
+#TODO: adjustment -- give path in XML to fix (  DAR:AR=@{RATIO}@|DAR:X=@{AR_X}@|DAR:Y=@{AR_Y}@ )
+#TODO: adjustment -- can have +=
+
+#TODO: @SRCPATH@, @SRCPATH_VIDEO@(get from <output> of last pass of video job or src video), @SRCPATH_AUDIO@ (get from output of audio job or src video), @BITRATE@, @MEGUI@, @{TOKEN}@
+#TODO: option - delete temporary files (video+audio+stat [?stat del-is defined right in job])
+
 #TODO: if token name starts from {!}  - case insensetive comparision
 #THE BUG: - why {A_DELAY_MS} = '?' ??? it should become None
 
@@ -119,7 +125,7 @@ def main():
     """ PREPARE PATTERNS """
 
     cfg.pattern_template['DETECT'] = _mycfg.PatternTemplate( 'DETECT',
-    						'{CONTAINER}|VIDEO|{WIDTH}x{HEIGHT}@{FPS}|{V_BRATE} {V_BRATE_TYPE}|{RATIO}|{VCODEC}|{VPROFILE}|{VSCAN_TYPE}|{VSCAN_ORDER}'+
+    						'{CONTAINER}|VIDEO|{WIDTH}x{HEIGHT}@{FPS}|{V_BRATE} {V_BRATE_TYPE}|{RATIO}={AR_X}:{AR_Y}|{VCODEC}|{VPROFILE}|{VSCAN_TYPE}|{VSCAN_ORDER}'+
     						'|AUDIO|{A_CHANNEL}|{A_CODEC}|{A_CODEC2}|{A_BRATE}|{A_ALIGNMENT}|{A_DELAY_MS}')
     cfg.pattern_template['ENCODE'] = _mycfg.PatternTemplate( 'ENCODE', '{BITRATE}|{AVS_TEMPLATE}|{INDEX_JOB}|{VIDEO_PASS}|{AUDIO_ENCODE}|{MUX_JOB}' )
     for k in cfg.pattern_template:
@@ -202,7 +208,7 @@ def PHASE1( to_process ):
     #output = '--Output="file://%s"'%mediaInfoTemplate
     output = ( "--Output="+
         """General;%Format%
-Video;|VIDEO|%Width%x%Height%@%FrameRate%|%BitRate/String%|%DisplayAspectRatio%|%Format%|%Format_Profile%|%ScanType%|%ScanOrder%
+Video;|VIDEO|%Width%x%Height%@%FrameRate%|%BitRate/String%|%DisplayAspectRatio%=%DisplayAspectRatio/String%|%Format%|%Format_Profile%|%ScanType%|%ScanOrder%
 Audio;|AUDIO|%Channel(s)%|%Codec%|%Codec/String%|%BitRate/String%|%Alignment%|%Delay%""" )
 
 
@@ -457,11 +463,6 @@ def PHASE2_3( to_encode ):
     # prepare jobs
     jobs = []
 
-    """   <Name>job2</Name>
-  <Status>WAITING</Status>
-  <Start>0001-01-01T00:00:00</Start>
-  <End>0001-01-01T00:00:00</End>
-"""
     # add jobs
     for j in jobs:
         my.megui.add_job( j )

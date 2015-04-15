@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<TaggedJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <EncodingSpeed />
+  <Job xsi:type="MuxJob">
+    <Input>@SRCPATH_VIDEO@</Input>
+    <Output>@SRCPATH@-mux@BITRATE@.mkv</Output>
+    <FilesToDelete />
+    <ContainerTypeString>MKV</ContainerTypeString>
+    <Codec />
+    <NbOfBFrames>0</NbOfBFrames>
+    <NbOfFrames>0</NbOfFrames>
+    <Bitrate>0</Bitrate>
+    <Overhead>4.3</Overhead>
+    <Settings>
+      <MuxedInput />
+      <MuxedOutput>@SRCPATH@-mux@BITRATE@.mkv</MuxedOutput>
+      <VideoInput>@SRCPATH_VIDEO@</VideoInput>
+      <AudioStreams>
+        <MuxStream>
+          <path>@SRCPATH_AUDIO@</path>
+          <delay>0</delay>
+          <bDefaultTrack>false</bDefaultTrack>
+          <bForceTrack>false</bForceTrack>
+          <language />
+          <name />
+        </MuxStream>
+      </AudioStreams>
+      <SubtitleStreams />
+      <Framerate>25.0</Framerate>
+      <ChapterFile />
+      <SplitSize xsi:nil="true" />
+      <DAR xsi:nil="true" />
+      <DeviceType>Standard</DeviceType>
+      <VideoName />
+      <MuxAll>false</MuxAll>
+    </Settings>
+    <MuxType>MKVMERGE</MuxType>
+  </Job>
+  <RequiredJobNames />
+  <EnabledJobNames />
+  <Name>job10</Name>
+  <Status>WAITING</Status>
+  <Start>0001-01-01T00:00:00</Start>
+  <End>0001-01-01T00:00:00</End>
+</TaggedJob>

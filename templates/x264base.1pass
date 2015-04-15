@@ -2,15 +2,11 @@
 <TaggedJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <EncodingSpeed />
   <Job xsi:type="VideoJob">
-    <Input>C:\Users\taranenko\YandexDisk\to_copy\MAH06835.MP4.avs</Input>
+    <Input>@SRCPATH@.avs</Input>
     <Output />
     <FilesToDelete />
     <Zones />
-    <DAR>
-      <AR>1.7821782178217821782178217822</AR>
-      <X>180</X>
-      <Y>101</Y>
-    </DAR>
+    <DAR />
     <Settings xsi:type="x264Settings">
       <EncodingMode>2</EncodingMode>
       <BitrateQuantizer>1000</BitrateQuantizer>
@@ -22,7 +18,7 @@
       <QPel>false</QPel>
       <Trellis>false</Trellis>
       <CreditsQuantizer>40</CreditsQuantizer>
-      <Logfile>C:\Users\taranenko\YandexDisk\to_copy\MAH06835.MP4.stats</Logfile>
+      <Logfile>@SRCPATH@.stats</Logfile>
       <VideoName />
       <CustomEncoderOptions />
       <FourCC>0</FourCC>

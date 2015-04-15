@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<TaggedJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <EncodingSpeed />
+  <Job xsi:type="AudioJob">
+    <Input>@SRCPATH@</Input>
+    <Output>@SRCPATH@.tmp.mp4</Output>
+    <FilesToDelete />
+    <CutFile />
+    <Settings xsi:type="NeroAACSettings">
+      <PreferredDecoderString>NicAudio</PreferredDecoderString>
+      <DownmixMode>KeepOriginal</DownmixMode>
+      <BitrateMode>ABR</BitrateMode>
+      <Bitrate>125</Bitrate>
+      <AutoGain>false</AutoGain>
+      <SampleRateType>deprecated</SampleRateType>
+      <SampleRate>KeepOriginal</SampleRate>
+      <TimeModification>KeepOriginal</TimeModification>
+      <ApplyDRC>false</ApplyDRC>
+      <Normalize>100</Normalize>
+      <CustomEncoderOptions />
+      <Profile>Auto</Profile>
+      <Quality>0.5</Quality>
+      <CreateHintTrack>false</CreateHintTrack>
+    </Settings>
+    <Delay>0</Delay>
+    <SizeBytes>0</SizeBytes>
+    <BitrateMode>CBR</BitrateMode>
+  </Job>
+  <RequiredJobNames />
+  <EnabledJobNames />
+  <Name>job4</Name>
+  <Status>DONE</Status>
+  <Start>2015-04-15T08:05:24.356619+03:00</Start>
+  <End>2015-04-15T08:05:25.8208021+03:00</End>
+</TaggedJob>
