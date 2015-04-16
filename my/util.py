@@ -20,6 +20,10 @@ def makeint( value, default = 0 ):
     try: return int(value)
     except: return default
 
+def makefloat( value, default = 0 ):
+    try: return float(value)
+    except: return default
+
 def makebool( value, default = True ):
     value = value.lower()
     if value in ['y','yes','t','true']:

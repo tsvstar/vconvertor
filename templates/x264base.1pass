@@ -9,7 +9,7 @@
     <DAR />
     <Settings xsi:type="x264Settings">
       <EncodingMode>2</EncodingMode>
-      <BitrateQuantizer>1000</BitrateQuantizer>
+      <BitrateQuantizer>@BITRATE@</BitrateQuantizer>
       <KeyframeInterval>250</KeyframeInterval>
       <NbBframes>3</NbBframes>
       <MinQuantizer>0</MinQuantizer>

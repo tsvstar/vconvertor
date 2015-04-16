@@ -1,5 +1,7 @@
 # usage: convertor.bat [--debug] [--strict] [--key1=value1] [--key2==value2] [...] DIRECTORY_OR_FILE_TO_PROCESS1 [DIRECTORY_OR_FILE_TO_PROCESS2 [..]]
 
+#TO_TEST: ENCODE{smth}, 2_3 phase, adjustments(raw, path:tag:name, flags(+?))
+
 #TODO: cached config(?)
 #TODO: parse vbrate / ({<float}, {>float}, {>=float, <=float}
 #TODO: better parsing (re.compile("^[A-Za-z_:0-9] *@?[=>]")
@@ -8,15 +10,20 @@
 
 #TODO: adjustment -- give path in XML to fix (  DAR:AR=@{RATIO}@|DAR:X=@{AR_X}@|DAR:Y=@{AR_Y}@ )
 #TODO: adjustment -- can have +=
+#TODO: adjustment -- if starts from ? -- means do not add if not existent
+#TODO:                              + -- add a new one anyway (FilesDelete:string for example)
+#TODO: KEEP_TMP, RESOLVE
 
 #TODO: option - delete temporary files (video+audio+stat [?stat del-is defined right in job])
 
 #TODO: if token name starts from {!}  - case insensetive comparision
 
-import os, sys, copy
+import os, sys, copy, re
+import xml.etree.ElementTree as ET
+
 import my.config as _mycfg
-import my.megui
-import my.util
+import my.megui, my.util
+from my.megui import _get_elem, _add_elem
 from my.util import makeint, makebool, splitl, adddict, vstrip
 
 ################################
@@ -47,6 +54,8 @@ def main():
     	    'RECURSIVE':     makebool,		# is recursive scan for source files
     	    'AVS_OVERWRITE': makebool,     	# Should .AVS be overwrited
     	    'INDEX_ONLY':    makeint,		# Should only AVS+index job be created[ 0=regular convert, 1=only index job, -1=first all index than all convert]
+    	    'KEEP_TMP':      makebool,     	# Should do not remove intermediary files
+    	    '@':             splitl,    	# @{KEY} = value -- set the KEY to use it later in jobs as @KEY@
     	    'EXTRA_AVS':     splitl,    	# if not empty, then add to .AVS file correspondend [EXTRA_AVS=xxx] section. Could be several: extra1+extra2+...
     	    'SUFFIX':	     vstrip,		# suffix for template (if defined will try to use 'name.suffix' template first; '.old' )
 
@@ -77,7 +86,12 @@ def main():
     print "\nLoad configs"
 
     # a) load default values
-    defaultOpt = ( "FILES_ONLY=*.mp4|*.mts\nRECURSIVE=1\n" )
+    defaultOpt = (
+"""FILES_ONLY=*.mp4|*.mts
+RECURSIVE=1
+KEEP_TMP=0
+AVS_OVERWRITE=0
+INDEX_ONLY=0""" )
     cfg.load_config( fname='INTERNAL', content=defaultOpt.split('\n'), strictError = True )
     internal = cfg.config['']	#.copy()
     del cfg.config['']
@@ -171,7 +185,9 @@ def main():
     """  PHASE2: Add task """
     print
     postponed_queue = []
-    PHASE2( process_queue )
+    PHASE2( process_queue, joblist )
+    joblist.addPostponed( postponed_queue )
+    joblist.save()
     ##for k,v in p_encode.iteritems(): print k,'=',v
 
 from ctypes import *
@@ -264,7 +280,7 @@ Audio;|AUDIO|%Channel(s)%|%Codec%|%Codec/String%|%BitRate/String%|%Alignment%|%D
     ********** PHASE 2: FIND MATCHED TEMPLATES **************
 """
 
-def PHASE2( process_queue ):
+def PHASE2( process_queue, joblist ):
     print "PHASE 2: Generate tasks"
     global p_detect
 
@@ -349,7 +365,7 @@ def PHASE2( process_queue ):
         if to_encode is None:
             continue
 
-        encode = PHASE2_3( fname, to_encode, parsed_info )
+        encode = PHASE2_3( fname, to_encode, parsed_info, joblist )
 
 
 
@@ -467,7 +483,7 @@ def PHASE2_2( detected ):
     ********** PHASE 2_3: GENERATE MEGUI TASK **************
 """
 
-def PHASE2_3( fname, to_encode, info ):
+def PHASE2_3( fname, to_encode, info, joblist ):
 
 
     print "PHASE2_3"
@@ -478,40 +494,79 @@ def PHASE2_3( fname, to_encode, info ):
     print "info", info
     print "mainopt", mainopts
 
-    keys = { '@SRCPATH@': fname,                                # source file
+    def GetKeys(basekeys):
+        keys = {}
+        # add from mainopts
+        kopts = cfg.get_opt( mainopts, '@' )
+        if isinstance(kopts,dict):
+            for k,v in kopts.iteritems():
+                keys["@%s@"%k]=v
+        # add detect values
+        for k,v in info.iteritems():
+            keys["@%s@"%k] = v
+
+        # update/replace from basekeys
+        keys.update(basekeys)
+        return keys
+
+    basekeys = { '@SRCPATH@': fname,                            # source file
              '@SRC_PATH_WO_EXT@': os.path.splitext(fname)[0],   # source file without extension
              '@SRCPATH_VIDEO@': fname,                          # intermediary video file
              '@SRCPATH_AUDIO@': fname,                          # intermediary audio file
              '@MEGUI@': my.megui.megui_path,
              '@BITRATE@': to_encode.get("{BITRATE}",{}).get("pvalue",0)
     }
-    for k,v in info.iteritems():
-        keys["@%s@"%k] = v
-    #for k,v in keys.iteritems():
-    #    print k,v
+    keys = GetKeys(basekeys)
+    keys['@{A_DELAY_MS}@'] = "%f" % my.utils.makefloat(keys['@{A_DELAY_MS}@'])
+
     print 'keys', keys
+    #for k,v in keys.iteritems():  print k,v
 
     # init copy of main opts (here will be accumulated options from adjustments
     optscopy = copy.deepcopy( mainopts )
 
-    # tokenname - name of token in to_encode dict
-    # xml       - if True, then loaded content will be translated to xmltree and adj applied
-    def getEncodeTokens( tokenname, xml = False ):
+    def _xml_scan( xml, tag_path, err_msg='', createIfNotFound = False ):
+        tag = tag_path[-1]
+        elems = map( lambda e: e, root.iter(tag) )
+        if len(elems)==0:
+            if createIfNotFound:
+                elems = [ my.megui._add_elem(xml,tag,'') ]
+            else:
+                raise _mycfg.StrictError( err_msg + "not found adjustment key <%s>"% ':'.join(tag_path) )
+        elif len(elems)>1:
+            raise _mycfg.StrictError( err_msg + "found several adjustment key <%s>"% ':'.join(tag_path) )
+        return elems[0]
+
+
+    # Workhorse. Made parsing of job and applying of everything
+    #   tokenname - name of token in to_encode dict
+    #   baseAdjustment - dict with default values of an adjustments (so we able to have default modification for any job)
+    #   xml       - if True, then loaded content will be translated to xmltree and adj applied
+    #   allowEmpty - if False then check and raise error if no valid content given
+    re_key = re.compile("@[A-Za-z0-9{}_]@")
+    def getEncodeTokens( tokenname, baseAdjustment={}, xml = False, allowEmpty = False ):
         d = to_encode.get( tokenname, {})
         # 1. get values
         detect_pname = d.get('pname','')                    # name of pattern for detection
         encode_tname = d.get('pvalue','')                   # name of template for job
         content = filter(len, d.get('tmpl_list',[]) )       # list of templates content (multipass)
-        adj = dict( filter(len, d.get('adj',[]) ) )         # dict of adjustments
+        adj_v = dict( filter(len, d.get('adj',[]) ) )       # dict of adjustments
 
-        # 2. prepare adjustments by keys
+        if not allowEmpty and len(content)==0:
+            raise _mycfg.StrictError( "ERROR: Empty %s for %s %s" % ( tokenname, detect_pname, encode_tname) )
+
+        # 2. adjustment = baseAdjustment + p_encode['adj'](override baseAdjustment)
+        adj = dict(baseAdjustment)
+        adj.update(adj_v)
+
+        # 3. prepare adjustments by keys
         for k,v in adj.items():
             if v.find('@')>=0:
                 for src, dst in keys.iteritems():
                     v = v.replace(src,dst)
                 adj[k]=v
 
-        # 3. process opts and keys from adjustments
+        # 4. process opts and keys from adjustments
         keys_local = list( keys )
         for k,v in adj.items():
             if len(k)>2 and k[0]=='%' and k[-1]=='%':
@@ -523,19 +578,57 @@ def PHASE2_3( fname, to_encode, info ):
                 keys_local[ k[1:-1] ] = v
                 del adj[k]
 
-        # 4. prepare content by keys
+        # 5. prepare content by keys
         for idx in range(0,len(content)):
             for src, dst in keys.iteritems():
                 content[idx] = content[idx].replace(src,dst)
 
-        # 5. convert to xml tree and process it
+        # 6. detect if any @KEY@ still left undefined
+        for v in adj.itervalues():
+            m = re_key.search(v)
+            if m:
+                raise _mycfg.StrictError( "For adjustment for pattern '%s/%s' found undefined key %s" % (detect_pname,tokenname, m.group(0)) )
+        for idx in range(0,len(content)):
+            m = re_key.search(content[idx])
+            if m:
+                suf = '.%dpass'%(idx+1) if idx else ''
+                raise _mycfg.StrictError( "At template '%s%s' for pattern '%s/%s' found undefined key %s" % (encode_tname,suf,detect_pname,tokenname, m.group(0)) )
+
+        # 7. convert to xml tree and process it
         if xml:
-            # a) convert to xmltree
-            # b) replace from adjustment
-            my.util.PRINT_MARK("!!TODO!!")
-            pass
+            for idx in range(0, len(content)):
+                suf = '.%dpass'%(idx+1) if idx else ''
+                err_msg = "At template '%s%s' for pattern '%s/%s' " % (encode_tname,suf,detect_pname,tokenname )
+
+                # a) convert to xmltree
+                content[idx] = ET.fromstring(content[idx])
+                root = content[idx].getroot()
+
+                # b) replace from adjustment
+                for name, value in adj:
+                    flag = ''
+                    if name[0] in ['?','!','+']:
+                        flag = name[0]
+                        name = name[1:]
+                    tagpath = name.split(':')
+                    elem = root
+                    for idx in range(0,len(tagpath)):
+                        if flag=='+' and (idx==len(tagpath)+1):
+                            elem = my.megui._add_elem(elem,tagpath[-1],'')
+                        else:
+                            elem = _xml_scan( elem, tagpath[:idx+1], err_msg= err_msg,
+                                                createIfNotFound = (idx!=0 and flag!='?') )
+                    elem.text = value
 
         return detect_pname, encode_tname, content, adj, optscopy
+
+    def AddJobs( content, **kww ):
+        kww.setdefault('required',[])
+        for c in content:
+            jobname = joblist.addJobXML( c, **kww )
+            kww['required'] = [jobname]
+        return kww['required']
+
 
 #to_encode {'{BITRATE}': {'pname': 'OPTION:BITRATE', 'pvalue': 1500},
 #'{AVS_TEMPLATE}': {'pname': '__dga', 'pvalue': 'dga.avs', 'tmpl_list': ['LoadPlugin("@MEGUI@/tools/dgavcindex/DGAVCDecode.dll")\nAVCSource("@SRCPATH@.dga")\n']},
@@ -545,14 +638,9 @@ def PHASE2_3( fname, to_encode, info ):
 #'{AUDIO_ENCODE}': {'pname': 'BASIC', 'pvalue': 'aac_base', 'tmpl_list': ['<?xml version="1.0"?>\n<TaggedJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n  <EncodingSpeed />\n  <Job xsi:type="AudioJob">\n    <Input>@SRCPATH@</Input>\n    <Output>@SRCPATH@.tmp.mp4</Output>\n    <FilesToDelete />\n    <CutFile />\n    <Settings xsi:type="NeroAACSettings">\n      <PreferredDecoderString>NicAudio</PreferredDecoderString>\n      <DownmixMode>KeepOriginal</DownmixMode>\n      <BitrateMode>ABR</BitrateMode>\n      <Bitrate>125</Bitrate>\n      <AutoGain>false</AutoGain>\n      <SampleRateType>deprecated</SampleRateType>\n      <SampleRate>KeepOriginal</SampleRate>\n      <TimeModification>KeepOriginal</TimeModification>\n      <ApplyDRC>false</ApplyDRC>\n      <Normalize>100</Normalize>\n      <CustomEncoderOptions />\n      <Profile>Auto</Profile>\n      <Quality>0.5</Quality>\n      <CreateHintTrack>false</CreateHintTrack>\n    </Settings>\n    <Delay>0</Delay>\n    <SizeBytes>0</SizeBytes>\n    <BitrateMode>CBR</BitrateMode>\n  </Job>\n  <RequiredJobNames />\n  <EnabledJobNames />\n  <Name>job4</Name>\n  <Status>DONE</Status>\n  <Start>2015-04-15T08:05:24.356619+03:00</Start>\n  <End>2015-04-15T08:05:25.8208021+03:00</End>\n</TaggedJob>']},
 #'{MUX_JOB}': {'pname': 'BASIC', 'pvalue': 'mkvmux', 'tmpl_list': ['<?xml version="1.0"?>\n<TaggedJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n  <EncodingSpeed />\n  <Job xsi:type="MuxJob">\n    <Input>@SRCPATH_VIDEO@</Input>\n    <Output>@SRCPATH@-mux@BITRATE@.mkv</Output>\n    <FilesToDelete />\n    <ContainerTypeString>MKV</ContainerTypeString>\n    <Codec />\n    <NbOfBFrames>0</NbOfBFrames>\n    <NbOfFrames>0</NbOfFrames>\n    <Bitrate>0</Bitrate>\n    <Overhead>4.3</Overhead>\n    <Settings>\n      <MuxedInput />\n      <MuxedOutput>@SRCPATH@-mux@BITRATE@.mkv</MuxedOutput>\n      <VideoInput>@SRCPATH_VIDEO@</VideoInput>\n      <AudioStreams>\n        <MuxStream>\n          <path>@SRCPATH_AUDIO@</path>\n          <delay>0</delay>\n          <bDefaultTrack>false</bDefaultTrack>\n          <bForceTrack>false</bForceTrack>\n          <language />\n          <name />\n        </MuxStream>\n      </AudioStreams>\n      <SubtitleStreams />\n      <Framerate>25.0</Framerate>\n      <ChapterFile />\n      <SplitSize xsi:nil="true" />\n      <DAR xsi:nil="true" />\n      <DeviceType>Standard</DeviceType>\n      <VideoName />\n      <MuxAll>false</MuxAll>\n    </Settings>\n    <MuxType>MKVMERGE</MuxType>\n  </Job>\n  <RequiredJobNames />\n  <EnabledJobNames />\n  <Name>job10</Name>\n  <Status>WAITING</Status>\n  <Start>0001-01-01T00:00:00</Start>\n  <End>0001-01-01T00:00:00</End>\n</TaggedJob>']}}
 
-
-
     # PROCESS {AVS_TEMPLATE}
     avsfname = fname + '.avs'
     detect_pname, encode_tname, content, adj, opts  = getEncodeTokens( '{AVS_TEMPLATE}' )
-    if len(content)==0:
-        print "ERROR: Empty {AVS_TEMPLATE} %s %s" % (detect_pname, encode_tname)
-        return
 
     if os.path.isfile(avsfname) and not cfg.get_opt( opts, 'AVS_OVERWRITE' ):
         print "AVS exists - do not overwrite"
@@ -571,30 +659,45 @@ def PHASE2_3( fname, to_encode, info ):
 
     # PROCESS {INDEX_JOB}
     detect_pname, encode_tname, content, adj, opts  = getEncodeTokens( '{INDEX_JOB}', xml=True )
+    addJobs( content )
 
-    my.util.PRINT_MARK("!!TODO!!")
-    exit(1)
+    index_only = makeint( cfg.get_opt( opts, 'INDEX_ONLY' ) )
+    if index_only>0:
+        return
 
-    # PROCESS {VIDEO_PASS}
+    # PREPARE ALL OTHER JOBS (to not leave unfinished if any error)
+    video_tuple = getEncodeTokens( '{VIDEO_PASS}', xml=True, allowEmpty = True )
+    audio_tuple = getEncodeTokens( '{AUDIO_ENCODE}', xml=True, allowEmpty = True )
+    mux_tuple = getEncodeTokens( '{MUX_JOB}', xml=True )
 
+    postponed = postponed_queue if index_only<0 else None
 
-    #'pname': '__dga', 'pvalue': 'dga.avs', 'tmpl_list'
+    detect_pname, encode_tname, content, adj, opts  = video_tuple
+    required =[]
+    res = addJobs( content, postponed = postponed )
+    if len(res):
+        keys['@SRCPATH_VIDEO@'] = _get_elem(content[-1].getroot(),'Output').text
+        reqiured+=res
 
-    #
+    detect_pname, encode_tname, content, adj, opts  = video_tuple
+    res = addJobs( content, postponed = postponed )
+    if len(res):
+        keys['@SRCPATH_AUDIO@'] = _get_elem(content[-1].getroot(),'Output').text
+        reqiured+=res
 
-    tokenlist = [ "{AVS_TEMPLATE}", "{INDEX_JOB}", "{VIDEO_PASS}",
-                            "{AUDIO_ENCODE}","{MUX_JOB}" ]
+    detect_pname, encode_tname, content, adj, opts  = mux_tuple
+    to_del = []
+    if keys['@SRCPATH_VIDEO@']!=keys['@SRCPATH@']:
+        to_del.append( keys['@SRCPATH_VIDEO@'] )
+    if keys['@SRCPATH_AUDIO@']!=keys['@SRCPATH@']:
+        to_del.append( keys['@SRCPATH_AUDIO@'] )
 
-    print "JOBS: " + ', '.join( lambda k: "%s=%s"%(k,to_encode.get(k,'???')), to_encode )
-    return
+    for delpath in to_del:
+        for c in content:
+             _add_elem( _get_elem(c.getroot(),'FilesToDelete'), 'string', delpath )
+    res = addJobs( content, postponed = postponed )
 
-    # prepare jobs
-    jobs = []
-
-    # add jobs
-    for j in jobs:
-        my.megui.add_job( j )
-    my.megui.save_jobs()
+    joblist.save()
 
 
 

@@ -14,6 +14,24 @@ def _get_elem( xml, name ):
         return elem
     return None
 
+def _add_elem( xml_owner, name, text ):
+    if len(tail)>1:
+        last = xml_owner[-1].tail
+        main = xml_owner[-2].tail
+    elif len(tail)>0:
+        last = xml_owner[-1].tail
+        main = xml_owner.tail
+    else:
+        last = xml_owner.tail
+        main = xml_owner.tail + '  '
+
+    elem = ET.SubElement(xml_owner, name)
+    elem.text = text
+    if len(xml_owner)>1:
+        tail = xml_owner[-2].main
+    elem.tail = last
+    return elem
+
 def print_xml ( xml, level='' ):
     print level, xml.tag, '|', xml.attrib, '|', xml.text
     for child in xml:
@@ -25,6 +43,8 @@ def print_xml1( root ):
     for xml in root.iter():
         print '', xml.tag, '|', xml.attrib, '|', xml.text
 
+
+"""=========================================================================="""
 
 class JobList(object):
     def __init__( self ):

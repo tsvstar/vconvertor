@@ -18,7 +18,7 @@
       <AudioStreams>
         <MuxStream>
           <path>@SRCPATH_AUDIO@</path>
-          <delay>0</delay>
+          <delay>@{A_DELAY_MS}@</delay>
           <bDefaultTrack>false</bDefaultTrack>
           <bForceTrack>false</bForceTrack>
           <language />
@@ -26,7 +26,7 @@
         </MuxStream>
       </AudioStreams>
       <SubtitleStreams />
-      <Framerate>25.0</Framerate>
+      <Framerate>@{FPS}@</Framerate>
       <ChapterFile />
       <SplitSize xsi:nil="true" />
       <DAR xsi:nil="true" />
