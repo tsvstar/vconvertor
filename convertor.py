@@ -9,7 +9,6 @@
 #TODO: adjustment -- give path in XML to fix (  DAR:AR=@{RATIO}@|DAR:X=@{AR_X}@|DAR:Y=@{AR_Y}@ )
 #TODO: adjustment -- can have +=
 
-#TODO: @SRCPATH@, @SRC_PATH_WO_EXT@, @SRCPATH_VIDEO@(get from <output> of last pass of video job or src video), @SRCPATH_AUDIO@ (get from output of audio job or src video), @BITRATE@, @MEGUI@, @{TOKEN}@
 #TODO: option - delete temporary files (video+audio+stat [?stat del-is defined right in job])
 
 #TODO: if token name starts from {!}  - case insensetive comparision
@@ -24,12 +23,11 @@ from my.util import makeint, makebool, splitl, adddict, vstrip
 
 def main():
     global cfg, isDebug, isStrict, mainopts
-    global p_encode, p_detect
+    global p_encode, p_detect, postponed_queue
 
     """ LOAD ARGV """
     my.util.prepare_console()
     argv = _mycfg.prepareARGV( sys.argv[1:] )
-    print argv
     keys, to_process = _mycfg.ParseArgv( argv, optdict={ 'debug':0, 'strict':0} )
     isDebug, isStrict = keys['debug'], keys['strict']
 
@@ -48,7 +46,7 @@ def main():
     	    'BITRATE':       makeint,		# Default value of bitrate (used if no correct defined in any matched template)
     	    'RECURSIVE':     makebool,		# is recursive scan for source files
     	    'AVS_OVERWRITE': makebool,     	# Should .AVS be overwrited
-    	    'INDEX_ONLY':    makebool,		# Should only AVS+index job be created
+    	    'INDEX_ONLY':    makeint,		# Should only AVS+index job be created[ 0=regular convert, 1=only index job, -1=first all index than all convert]
     	    'EXTRA_AVS':     splitl,    	# if not empty, then add to .AVS file correspondend [EXTRA_AVS=xxx] section. Could be several: extra1+extra2+...
     	    'SUFFIX':	     vstrip,		# suffix for template (if defined will try to use 'name.suffix' template first; '.old' )
 
@@ -56,8 +54,9 @@ def main():
     	    'MATCH_ONLY':    splitl,		# if only they are match to any of given template
     	    'TASK':          splitl,
 
-    	    'ENCODE':        adddict,       # replacing of encoding sequences
+    	    'ENCODE':        adddict,       # replacing of encoding sequences  #@tsv TO IMPLEMENT!!
     	    'DETECT':        adddict,		# replacing of detect patterns
+            'RESOLVE':       splitl,        # TODO!! RESOLVE{sony:720|_dga} = _dga|dgasony  # if video match to several patterns and they have collision how to process - we can resolve this by saying which encoding pattern should be used instead
 
     	    'MEGUI':         vstrip,		# path to MEGUI
     	   }
@@ -171,6 +170,7 @@ def main():
 
     """  PHASE2: Add task """
     print
+    postponed_queue = []
     PHASE2( process_queue )
     ##for k,v in p_encode.iteritems(): print k,'=',v
 
@@ -310,11 +310,12 @@ def PHASE2( process_queue ):
                 is_forbid = is_forbid or ( pname if pname.startswith('__forbid') else False )
                 detected.append( pname )
 
-        #3) cutoff suffix from detect pattern
+        #3) cutoff suffix from detect pattern (that the thing which allow to make a lot of correspondance to the same patter)
         detected = list( set( map( lambda s: s.split('.',1)[0], detected ) ) )
 
-        print "%(fname)s\t=> %(w)s*%(h)s@%(fps)s = %(ar)s; %(profile)s ( %(detected)s )" % {
-                        'fname': my.util.str_cp866(fname),
+        print u"%(fname)s\t=> %(w)s*%(h)s@%(fps)s = %(ar)s; %(profile)s ( %(detected)s )" % {
+                        'fname': my.util.str_decode(fname),
+                        #'fname': my.util.str_cp866(fname),
                         'w': parsed_info['{WIDTH}'],
                         'h': parsed_info['{HEIGHT}'],
                         'fps': parsed_info['{FPS}'],
@@ -329,7 +330,7 @@ def PHASE2( process_queue ):
             continue
 
         if mainopts['MATCH_ONLY'] and len( set(detected) & mainopts['MATCH_ONLY'] )==0:
-            print " >> skipped( patterns doesn't intersected with ACL list 'MATCH_ONLY')"
+            print " >> skipped( patterns doesn't match to any of MATCH_ONLY: %s)" % ','.join(mainopts['MATCH_ONLY'])
             continue
 
         # 4) apply ENFORCE_PATTERN if given
@@ -451,11 +452,11 @@ def PHASE2_2( detected ):
                 if adj is not None:
                     ar_joined_pairs = map(lambda a: a[0] if a[1] is None else '='.join(a), adj)
                     adj = "{%s}" % ( ','.join(ar_joined_pairs) )
-                print "Token %(token)s. Path of scaned patterns: (%(path)s). Value = %(value)s%(adj)s " % {
+                print "Token %(token)s. Path of scaned patterns: (%(path)s). Value = %(value)s %(adj)s " % {
                             'token': p_token_name,
                             'path': ' -> '.join(encoder.path),
                             'value': repr(to_encode_cur.get('pvalue',None)),
-                            'adj': adj  }
+                            'adj': (adj if adj is not None else '') }
 
         to_encode[p_token_name] = to_encode_cur
 
@@ -470,10 +471,12 @@ def PHASE2_3( fname, to_encode, info ):
 
 
     print "PHASE2_3"
+    print "!!TODO!\n"
     print "fname", fname
-    print "to_encode", to_encode
+    ##print "to_encode", to_encode
+    print to_encode['{AVS_TEMPLATE}']
     print "info", info
-    print "!!TODO!!"
+    print "mainopt", mainopts
 
     keys = { '@SRCPATH@': fname,                                # source file
              '@SRC_PATH_WO_EXT@': os.path.splitext(fname)[0],   # source file without extension
@@ -484,30 +487,55 @@ def PHASE2_3( fname, to_encode, info ):
     }
     for k,v in info.iteritems():
         keys["@%s@"%k] = v
-    for k,v in keys.iteritems():
-        print k,v
+    #for k,v in keys.iteritems():
+    #    print k,v
+    print 'keys', keys
 
-    exit(1)
+    # init copy of main opts (here will be accumulated options from adjustments
+    optscopy = copy.deepcopy( mainopts )
 
-    def getEncodeTokens( tokenname ):
+    # tokenname - name of token in to_encode dict
+    # xml       - if True, then loaded content will be translated to xmltree and adj applied
+    def getEncodeTokens( tokenname, xml = False ):
         d = to_encode.get( tokenname, {})
-        # get values
-        detect_pattern = d.get('pname','')
-        encode_pattern = d.get('pvalue','')
-        content = filter(len, d.get('tmpl_list',[]) )
-        adj = filter(len, d.get('adj',[]) )
+        # 1. get values
+        detect_pname = d.get('pname','')                    # name of pattern for detection
+        encode_tname = d.get('pvalue','')                   # name of template for job
+        content = filter(len, d.get('tmpl_list',[]) )       # list of templates content (multipass)
+        adj = dict( filter(len, d.get('adj',[]) ) )         # dict of adjustments
 
-        # prepare by keys
+        # 2. prepare adjustments by keys
+        for k,v in adj.items():
+            if v.find('@')>=0:
+                for src, dst in keys.iteritems():
+                    v = v.replace(src,dst)
+                adj[k]=v
+
+        # 3. process opts and keys from adjustments
+        keys_local = list( keys )
+        for k,v in adj.items():
+            if len(k)>2 and k[0]=='%' and k[-1]=='%':
+                optname = k[1:-1]
+                if optname in cfg.opt:
+                    cfg.replace_opt( optscopy, {optname:v} )
+                del adj[k]
+            elif len(k)>2 and k[0]=='@' and k[-1]=='@':
+                keys_local[ k[1:-1] ] = v
+                del adj[k]
+
+        # 4. prepare content by keys
         for idx in range(0,len(content)):
             for src, dst in keys.iteritems():
                 content[idx] = content[idx].replace(src,dst)
 
-        # do copy of main opts and fill from adjustments
-        optscopy = copy.deepcopy( mainopts )
+        # 5. convert to xml tree and process it
+        if xml:
+            # a) convert to xmltree
+            # b) replace from adjustment
+            my.util.PRINT_MARK("!!TODO!!")
+            pass
 
-        #TODO!!!!
-
-        return detect_pattern, encode_pattern, content, adj, optscopy
+        return detect_pname, encode_tname, content, adj, optscopy
 
 #to_encode {'{BITRATE}': {'pname': 'OPTION:BITRATE', 'pvalue': 1500},
 #'{AVS_TEMPLATE}': {'pname': '__dga', 'pvalue': 'dga.avs', 'tmpl_list': ['LoadPlugin("@MEGUI@/tools/dgavcindex/DGAVCDecode.dll")\nAVCSource("@SRCPATH@.dga")\n']},
@@ -520,28 +548,39 @@ def PHASE2_3( fname, to_encode, info ):
 
 
     # PROCESS {AVS_TEMPLATE}
-    detect_pname, encode_pname, content, adj, opts  = getEncodeTokens( '{AVS_TEMPLATE}' )
+    avsfname = fname + '.avs'
+    detect_pname, encode_tname, content, adj, opts  = getEncodeTokens( '{AVS_TEMPLATE}' )
     if len(content)==0:
-        print "ERROR: Empty {AVS_TEMPLATE} %s %s" % (detect_pname, encode_pname)
+        print "ERROR: Empty {AVS_TEMPLATE} %s %s" % (detect_pname, encode_tname)
         return
 
-    extra_avs =  filter( len, cfg.get_opt( opts, 'EXTRA_AVS' ) )
-    for idx in range(0, len(content)):
-        for section in extra_avs:
-            content[idx] += "\n" + cfg.config['EXTRA_AVS'].get(section,"")  # TODO!!!
+    if os.path.isfile(avsfname) and not cfg.get_opt( opts, 'AVS_OVERWRITE' ):
+        print "AVS exists - do not overwrite"
+    else:
+        #find non empty AVS names
+        extra_avs_sections = filter( len, cfg.get_opt( opts, 'EXTRA_AVS' ) )
+        #collect their contents
+        extra_avs_contents = map( lambda section: "#EXTRA:%s\n%s"%(section,cfg.config['EXTRA_AVS'].get(section,"")), extra_avs_sections )
+        #add to all passes
+        content = map(lambda basecontent: '\n'.join([basecontent]+extra_avs_contents), content )
 
+        for idx in range(0,len(content)):
+            avsfname = fname + (('.%d'%idx+1) if idx>0 else '' ) + '.avs'
+            with open(avsfname,'wb') as f:
+                f.write( str_encode(content[idx],'cp1251'))
 
+    # PROCESS {INDEX_JOB}
+    detect_pname, encode_tname, content, adj, opts  = getEncodeTokens( '{INDEX_JOB}', xml=True )
 
+    my.util.PRINT_MARK("!!TODO!!")
+    exit(1)
 
-    # PROCESS INDEX_JOB
-
+    # PROCESS {VIDEO_PASS}
 
 
     #'pname': '__dga', 'pvalue': 'dga.avs', 'tmpl_list'
 
     #
-
-    globals
 
     tokenlist = [ "{AVS_TEMPLATE}", "{INDEX_JOB}", "{VIDEO_PASS}",
                             "{AUDIO_ENCODE}","{MUX_JOB}" ]

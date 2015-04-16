@@ -69,8 +69,14 @@ class JobList(object):
             self.joblist[-2].tail = '\n    '
         self.dirty = True
 
-    def addJobXML( self, xmlContent, required=[] ):
-        jobname = "job%04d" % jobnum+1
+    def addPostponed( self, queue ):
+        for jobname, targetname, xmlContent in queue:
+            xmlContent.write(targetname)
+            appendJob(jobname)
+
+    def addJobXML( self, xmlContent, required=[], postponed = None ):
+        jobnum += 1
+        jobname = "job%04d" % jobnum
         _get_elem(xmlContent,'Name').text   = jobname
         _get_elem(xmlContent,'Status').text = 'WAITING'
         _get_elem(xmlContent,'Start').text  = '0001-01-01T00:00:00'
@@ -78,13 +84,16 @@ class JobList(object):
         reqElement = _get_elem(xmlContent,'RequiredJobNames')
         for j in reqElement:
             reqElement.remove(j)
-        jobnum += 1
         for j in required:
             elem = ET.SubElement(reqElement, 'string')
             elem.text = 'job%04d'%(jobnum+j)
         targetname = os.path.join( megui_path, jobname+'.xml' )
-        xmlContent.write(targetname)
-        appendJob(jobname)
+        if not isinstance( postponed, list ):
+            xmlContent.write(targetname)
+            appendJob(jobname)
+        else:
+            postponed.append( [ jobname, targetname, xmlContent ] )
+        return jobname
 
     def delJob( self, jobname ):
         todel = []

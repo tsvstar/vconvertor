@@ -123,6 +123,13 @@ def debugDump( obj, short = False ):
     _debugGuard = False
     return rv
 
+def PRINT_MARK(mark):
+    import inspect
+    frame = inspect.stack()[1]
+    print "%s at %s:%s" % (mark, frame[1], frame[2])
+    exit()
+
+
 
 """
 ################################################################

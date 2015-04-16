@@ -299,7 +299,16 @@ class ConfigLoader(object):
     @staticmethod
     def replace_opt( optdict1, optdict2 ):
         for k,v in optdict2.iteritems():
-            if v is not None:
+            if isinstance(v,dict):
+                if optdict1.get(k,'')=='':
+                    optdict1[k] ={}
+                optdict1[k].update(v)
+            elif isinstance(v,basestring):
+                if len(v) and v[0] in ['+','|']:
+                    optdict1[k] +=v
+                else:
+                    optdict1[k] = v
+            elif v is not None:
                 optdict1[k] = v
         return optdict1
 
@@ -394,7 +403,7 @@ class ConfigLoader(object):
         RETURN: content of template
     """
     def load_template( self, tname, fatal = True ):
-        print "load>",self.tpath, tname    #@tsv
+        ##print "load>",self.tpath, tname    #@tsv
         # found in cache
         if tname in self.templates:
             return self.templates[tname]
@@ -409,9 +418,9 @@ class ConfigLoader(object):
 
         # load file
         try:
-            print "load>",self.tpath, tname    #@tsv
+            ##print "load>",self.tpath, tname    #@tsv
             fname = os.path.join( self.tpath, tname )
-            print "+++",fname                   #@tsv
+            ##print "+++",fname                   #@tsv
             with open( fname, 'r') as f:
                 self.templates[tname] = f.read()
             if self.isDebug:
@@ -614,21 +623,24 @@ class Encoding(object):
         rv_adjustment = None
         rv_defaultname = None
 
+        DBG = False #(p_token_name=='{AVS_TEMPLATE}')
+        if DBG: print "ENTER>rv_adj", rv_adjustment       #@tsv
+
         ##print pname1
         ##if pname1=='':
         ##    return rv_defaultname, '', rv_adjustment, []
 
         lst1 = pname1.split(':')
-        print lst1
+        ##print lst1     #@tsv
         for idx in range(0,len(lst1)):      # 1. outer loop: iterate up to root pattern ( sony:480:abc -> sony:480 -> sony )
-            print lst1[:-idx]
+            ##print lst1[:-idx]         #@tsv
             pname2 = pname1 if not idx else ':'.join(lst1[:-idx])
 
             for suffix in self.suffix_list: # 2. inner loop: try with and without suffix
 
                     pname3 = pname2 + suffix
 
-                    print "%d;\t%s;\t%s" %(idx,pname2,pname3)
+                    if DBG: print "idx=%d\tpname2=%s\tpname3=%s\tv=%s\trvadj=%s" %(idx,pname2,pname3,self.p_encode.get(pname3,{}).get(p_token_name,'??'),rv_adjustment)   #@tsv
 
                     if ( pname3 not in self.p_encode ): # if no such pattern found
 
@@ -651,8 +663,8 @@ class Encoding(object):
                     value = self.p_encode[pname3].get(p_token_name,None)          # get value and split with adjustment
                     if value is None:
                         continue
-                    print value
                     value, adj = split_pair( value, '{' )
+                    if DBG: print 'value=%s\tadj=%s'%(value,adj)         #@tsv
                     if adj is not None and adj[-1]!='}':
                         raise StrictError("No enclosing bracket for token '%s' at pattern '%s': %s" %
                                              ( p_token_name, pname3, self.p_encode[pname3] ) )
@@ -672,12 +684,14 @@ class Encoding(object):
                     if template_name == '' and rv_defaultname is not None:
                         rv_defaultname = pname3
 
+                    if DBG: print "rv_adj", rv_adjustment       #@tsv
                     if template_name in [None,'*','?']:
                         continue
 
                     tcontent_list = self.cfg.load_multi_templates( template_name )
                     if tcontent_list is None:
                         raise StrictError("Fail to load template '%s' for token '%s' at pattern '%s'" % ( template_name, p_token_name, pname3 ))
+                    if DBG: print pname3, value, rv_adjustment, "tcontent_list" #@tsv
                     return pname3, value, rv_adjustment, tcontent_list
 
         return rv_defaultname, '', rv_adjustment, []
