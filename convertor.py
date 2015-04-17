@@ -165,6 +165,7 @@ INDEX_ONLY=0""" )
     if not os.path.isdir(my.megui.megui_path):
         print "Invalid path to MEGUI (%s)" % my.megui.megui_path
         exit(1)
+
     joblist = my.megui.JobList()
     ##my.megui.print_xml(joblist.tree._root)    #@tsv
     my.megui.load_jobdir(joblist)
@@ -175,8 +176,6 @@ INDEX_ONLY=0""" )
     if len(to_process)==0:
         print "No source given"
         exit()
-
-    print get_args(False)
 
     """ PHASE1: Collect Info """
     process_queue = PHASE1( to_process )
@@ -189,20 +188,6 @@ INDEX_ONLY=0""" )
     joblist.addPostponed( postponed_queue )
     joblist.save()
     ##for k,v in p_encode.iteritems(): print k,'=',v
-
-from ctypes import *
-def get_args( delFirst = True ):
-
-    size = c_int()
-    ptr = windll.shell32.CommandLineToArgvW(windll.kernel32.GetCommandLineW(), byref(size))
-    ref = c_wchar_p * size.value
-    raw = ref.from_address(ptr)
-    args = [arg for arg in raw]
-    windll.kernel32.LocalFree(ptr)
-    if delFirst and len(args)>1:
-      if args[1]==sys.argv[0].decode('cp1251','ignore'):
-        args = args[1:]
-    return args
 
 
 ####################################################################
@@ -530,7 +515,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
         elems = map( lambda e: e, root.iter(tag) )
         if len(elems)==0:
             if createIfNotFound:
-                elems = [ my.megui._add_elem(xml,tag,'') ]
+                elems = [ _add_elem(xml,tag,'') ]
             else:
                 raise _mycfg.StrictError( err_msg + "not found adjustment key <%s>"% ':'.join(tag_path) )
         elif len(elems)>1:
@@ -601,7 +586,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
                 err_msg = "At template '%s%s' for pattern '%s/%s' " % (encode_tname,suf,detect_pname,tokenname )
 
                 # a) convert to xmltree
-                content[idx] = ET.fromstring(content[idx])
+                content[idx] = ET.ElementTree( ET.fromstring(content[idx]) )
                 root = content[idx].getroot()
 
                 # b) replace from adjustment
@@ -614,7 +599,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
                     elem = root
                     for idx in range(0,len(tagpath)):
                         if flag=='+' and (idx==len(tagpath)+1):
-                            elem = my.megui._add_elem(elem,tagpath[-1],'')
+                            elem = _add_elem(elem,tagpath[-1],'')
                         else:
                             elem = _xml_scan( elem, tagpath[:idx+1], err_msg= err_msg,
                                                 createIfNotFound = (idx!=0 and flag!='?') )

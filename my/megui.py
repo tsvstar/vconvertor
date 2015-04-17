@@ -9,26 +9,34 @@ megui_path = None
 re_job = re.compile('^(job[0-9]+)\.xml$', flags = re.IGNORECASE )
 re_jobtext = re.compile('job([0-9]+)', flags = re.IGNORECASE )
 
+# found in child(recursively) first element with given tag
 def _get_elem( xml, name ):
     for elem in xml.iter(name):
         return elem
     return None
 
+# add to "xml" a new element with "name" and "text"
+# with keeping pretty-print formatting
 def _add_elem( xml_owner, name, text ):
-    if len(tail)>1:
+    if len(xml_owner)>1:
         last = xml_owner[-1].tail
         main = xml_owner[-2].tail
-    elif len(tail)>0:
+    elif len(xml_owner)>0:
         last = xml_owner[-1].tail
-        main = xml_owner.tail
+        main = xml_owner.text
     else:
         last = xml_owner.tail
-        main = xml_owner.tail + '  '
+        main = xml_owner.tail + '__'
 
     elem = ET.SubElement(xml_owner, name)
     elem.text = text
+    ##print ( "_add_elem(%s)=%s: '%s' '%s' %d" %(name,text, main,last, len(xml_owner)) ).replace('\n','^')
     if len(xml_owner)>1:
-        tail = xml_owner[-2].main
+        xml_owner[-2].tail = main
+    elif len(xml_owner)<=1:
+        ##print ("change owner text from '%s' to '%s' " % (xml_owner.text, main) ).replace('\n','^')
+        #if len(xml_owner.text.strip())==0:     # Uncomment this to keep text when add child, but default behavior is clean text if first child added
+            xml_owner.text = main
     elem.tail = last
     return elem
 

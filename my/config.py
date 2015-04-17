@@ -313,13 +313,18 @@ class ConfigLoader(object):
         return optdict1
 
     """ --- getter: get value of option "optname" from dictionary "optdic" ---"""
-    def get_opt( self, optdict, optname ):
+    def get_opt( self, optdict, optname, subname=None ):
         if optname not in self.opt:
             print "INTERNAL FAILURE: unknown option %s" % optname
             return None
-        rv = self.opt[optname](optdict.get( optname, '' ))
+        if subname is None:
+            src_value = optdict.get( optname, None )
+        else:
+            src_value = optdict.get( optname, {} ).get(subname, None)
+
+        rv = self.opt[optname]( '' if src_value is None else src_value )
         if self.isDebug:
-            print "__getopt(%s) = %s (%s)" %(optname, optdict.get( optname, None ), str(rv) )
+            print "__getopt(%s,%s) = %s (%s)" %(optname, subname, src_value, str(rv) )
         return rv
 
 
