@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <TaggedJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <Job xsi:type="FFMSIndexJob">
-    <Input>@SRC_PATH@</Input>
-    <Output>@SRC_PATH@.ffindex</Output>
+    <Input>@SRCPATH@</Input>
+    <Output>@SRCPATH@.ffindex</Output>
     <FilesToDelete />
     <LoadSources>false</LoadSources>
     <DemuxVideo>false</DemuxVideo>

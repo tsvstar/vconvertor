@@ -35,7 +35,65 @@ def split_pair( s, sep, strip = True ):
 # Prepare windows taken ARGV.
 #    >> script "drive:\path\to\dir\" key
 #  incorrectly treated as single arg 'drive:\path\to\dir" key'
+
+re_quote = re.compile('\"')
+re_argv = re.compile('[ \"]')
+
+# RETURN: pre, main, post
+def _re_find( re, s ):
+    m = re.search(s)
+    if not m:
+        return s, '', ''
+    return s[:m.start(0)], m.group(0), s[m.end(0):]
+
+
+# MANUAL PARSING OF ARGV
+# ("Far Manager" give dir as "path\to\dir\" and in this case all argv after that parsed incorrectly)
 def prepareARGV( argv ):
+
+    # get cmdline unparsed
+    import ctypes
+    func = ctypes.windll.kernel32.GetCommandLineA
+    func.restype = ctypes.c_char_p
+    cmd = ctypes.windll.kernel32.GetCommandLineA()
+
+    scriptpath = argv[0].replace('\\\\','\\') + '"'
+    cmd = cmd.split(scriptpath,1)[1]    # cut off [python, mainscript]
+    cmd = util.str_decode(cmd)
+
+    argv = [ argv[0] ]
+    quoteFlag = False
+    while len(cmd):
+
+        if not quoteFlag:
+            # Regular processing (first or after space)
+            cmd = cmd.strip()
+            pre, sym, cmd = _re_find( re_argv, cmd )
+            argv.append(pre)
+
+            if sym!='"':        # EOL or space - regular arg
+                continue
+
+            pre, sym, cmd = _re_find( re_quote, cmd )  # lookup closing quote
+            argv[-1] += ( pre if pre!='' else '"' )     # add quoted value ("" means just ")
+            quoteFlag = True
+        else:
+            # Continue to process after quoted value (quoteFlag==True)
+            pre, sym, cmd = _re_find( re_argv, cmd )
+
+            argv[-1]+=pre
+
+            if sym!='"':            # EOL or space - finish this arg
+                quoteFlag = False
+                continue
+
+            pre, sym, cmd = _re_find( re_quote, cmd )  # lookup closing quote
+            argv[-1] += ( pre if pre!='' else '"' )     # add quoted value ("" means just ")
+
+    return filter( len, argv )
+
+def prepareARGVOld( argv ):
+
     res = ['']
     for a in argv:
         idx = a.find('" ')

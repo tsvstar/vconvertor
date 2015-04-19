@@ -1,24 +1,28 @@
 # usage: convertor.bat [--debug] [--strict] [--key1=value1] [--key2==value2] [...] DIRECTORY_OR_FILE_TO_PROCESS1 [DIRECTORY_OR_FILE_TO_PROCESS2 [..]]
 
 #TO_TEST: ENCODE{smth}, 2_3 phase, adjustments(raw, path:tag:name, flags(+?))
+#TOCHECK: cfg.CONSOLE_ENCODING, FSYSTEM_ENCODING (to support non-russian)
+#KEEP_TMP #TODO: option - delete temporary files (video+audio+stat [?stat del-is defined right in job])
+
+#TODO: add sonymts patterns,
 
 #TODO: cached config(?)
 #TODO: parse vbrate / ({<float}, {>float}, {>=float, <=float}
 #TODO: better parsing (re.compile("^[A-Za-z_:0-9] *@?[=>]")
 #TODO: alternate syntax ( NAME @=> name=val1|name2>=val2,name2<=val2_1 )
-#TODO: multiple matches to same pattern(for detect)
+#DONE: multiple matches to same pattern(for detect) [suffix to make several conditions list matched to same pattern name]
 
 #TODO: adjustment -- give path in XML to fix (  DAR:AR=@{RATIO}@|DAR:X=@{AR_X}@|DAR:Y=@{AR_Y}@ )
-#TODO: adjustment -- can have +=
-#TODO: adjustment -- if starts from ? -- means do not add if not existent
-#TODO:                              + -- add a new one anyway (FilesDelete:string for example)
-#TODO: KEEP_TMP, RESOLVE
+#                 -- can have += (token values could starts from +)
+#                 -- if starts from ? -- means do not add if not existent
+#                                   + -- add a new one anyway (FilesDelete:string for example)
 
-#TODO: option - delete temporary files (video+audio+stat [?stat del-is defined right in job])
+#TODO:  RESOLVE
+# If template starts from '!' - than in case conflict if no other '!' templates found - use this
+#TODO: --SHOW_SCAN (make output for scaned )
+#TODO: if token name starts from {!}  - case insensetive comparision (WHAT'S FOR? DETECT?)
 
-#TODO: if token name starts from {!}  - case insensetive comparision
-
-import os, sys, copy, re
+import os, sys, copy, re, codecs
 import xml.etree.ElementTree as ET
 
 import my.config as _mycfg
@@ -28,13 +32,18 @@ from my.util import makeint, makebool, splitl, adddict, vstrip
 
 ################################
 
+my.util.baseencode = 'cp1251'           # your filesystem encoding (for russian windows works with cp1251)
+my.util.console_encoding = 'cp866'      # your console encoding (for russian console display as cp866)
+
+################################
+
 def main():
     global cfg, isDebug, isStrict, mainopts
     global p_encode, p_detect, postponed_queue
 
     """ LOAD ARGV """
     my.util.prepare_console()
-    argv = _mycfg.prepareARGV( sys.argv[1:] )
+    argv = _mycfg.prepareARGV( sys.argv )[1:]
     keys, to_process = _mycfg.ParseArgv( argv, optdict={ 'debug':0, 'strict':0} )
     isDebug, isStrict = keys['debug'], keys['strict']
 
@@ -120,13 +129,13 @@ INDEX_ONLY=0""" )
     mainopts = dict.fromkeys( cfg.opt, '' )                 # initialize dict with '' for all options
     cfg.replace_opt( mainopts, cfg.config[''][None] )       # replace from base section config
     mainopts['TASK'] = keys.get('TASK', mainopts['TASK'])   # replace TASK from ARGV if given
-    print mainopts  #@tsv
+    ##print mainopts  #@tsv
     tasks = filter( len, cfg.get_opt(mainopts, 'TASK') )    # filter splited(on parse) list of tasks
     for t in tasks:
         #if isDebug:
         print "Apply TASK '%s'" % t
         if t not in cfg.config['TASK']:
-            print "Unknown task '%s'" % my.util.str_encode(t,'cp866')
+            print "Unknown task '%s'" % my.util.str_encode(t,my.util.console_encoding)
             if isStrict:
                 exit(1)
             continue
@@ -134,7 +143,8 @@ INDEX_ONLY=0""" )
     cfg.replace_opt( mainopts, keys ) # replace from given in ARGV options (they have most priority)
 
     mainopts['MATCH_ONLY'] = set( filter( len, cfg.get_opt( mainopts, 'MATCH_ONLY' ) ) )
-    print mainopts  #@tsv
+    ##print mainopts  #@tsv
+
 
     """ PREPARE PATTERNS """
 
@@ -170,7 +180,7 @@ INDEX_ONLY=0""" )
     ##my.megui.print_xml(joblist.tree._root)    #@tsv
     my.megui.load_jobdir(joblist)
     if joblist.dirty:
-        print "Restore missed jobs"
+        print "Store changes of jobs list"
         joblist.save()
 
     if len(to_process)==0:
@@ -280,7 +290,7 @@ def PHASE2( process_queue, joblist ):
         # 1) parse mediainfo
         parsed_info = MyCachedProcessor.validate( info, verbose = True )
         if parsed_info is None:
-            print "^^for file %s" % str_encode(fname,'cp866')
+            print "^^for file %s" % my.util.str_encode(fname,'cp866')
             continue
         parsed_info = parsed_info['_']
         if isDebugPhase2: print parsed_info       #@tsv
@@ -380,8 +390,7 @@ def PHASE2( process_queue, joblist ):
 def PHASE2_2( detected ):
     global p_encode
 
-    #@tsv
-    print "PHASE2_2", detected
+    print "PHASE2_2", detected        #@tsv
 
     # initialize object which do scaning job
     #   (find for given token and given pattern most precise existed correspondance)
@@ -391,11 +400,11 @@ def PHASE2_2( detected ):
     sysPatternList = [ 'BASIC', 'TOP' ]
 
     # OUTER CYCLE: PROCESS EACH TOKEN
-    print cfg.pattern_template['ENCODE']
+    ##print cfg.pattern_template['ENCODE']
     for p_token_name in cfg.pattern_template['ENCODE'].ar_tokens:
         if p_token_name in ['_']:       # skip 'printable value'
             continue
-        print "!!%s" % p_token_name     #@tsv
+        ##print "!!%s" % p_token_name     #@tsv
 
         if p_token_name=='{BITRATE}':   # if enforced_bitrate defined, then do not get it from patterns
             enforced_brate = cfg.get_opt( mainopts, 'ENFORCE_BITRATE' )
@@ -472,12 +481,6 @@ def PHASE2_3( fname, to_encode, info, joblist ):
 
 
     print "PHASE2_3"
-    print "!!TODO!\n"
-    print "fname", fname
-    ##print "to_encode", to_encode
-    print to_encode['{AVS_TEMPLATE}']
-    print "info", info
-    print "mainopt", mainopts
 
     def GetKeys(basekeys):
         keys = {}
@@ -495,17 +498,25 @@ def PHASE2_3( fname, to_encode, info, joblist ):
         return keys
 
     basekeys = { '@SRCPATH@': fname,                            # source file
-             '@SRC_PATH_WO_EXT@': os.path.splitext(fname)[0],   # source file without extension
+             '@SRCPATH_WO_EXT@': os.path.splitext(fname)[0],   # source file without extension
              '@SRCPATH_VIDEO@': fname,                          # intermediary video file
              '@SRCPATH_AUDIO@': fname,                          # intermediary audio file
              '@MEGUI@': my.megui.megui_path,
              '@BITRATE@': to_encode.get("{BITRATE}",{}).get("pvalue",0)
     }
     keys = GetKeys(basekeys)
-    keys['@{A_DELAY_MS}@'] = "%f" % my.utils.makefloat(keys['@{A_DELAY_MS}@'])
+    keys['@{A_DELAY_MS}@'] = "%d" % int(my.util.makefloat(keys['@{A_DELAY_MS}@']))
 
+    """
+    # DEBUG INFO
+    print "fname", type(fname), fname
+    print "to_encode", to_encode
+    print to_encode['{AVS_TEMPLATE}']
+    print "info", info
+    print "mainopt", mainopts
     print 'keys', keys
     #for k,v in keys.iteritems():  print k,v
+    """
 
     # init copy of main opts (here will be accumulated options from adjustments
     optscopy = copy.deepcopy( mainopts )
@@ -566,7 +577,9 @@ def PHASE2_3( fname, to_encode, info, joblist ):
         # 5. prepare content by keys
         for idx in range(0,len(content)):
             for src, dst in keys.iteritems():
-                content[idx] = content[idx].replace(src,dst)
+                ##if src.startswith("@SRCPATH_"):
+                ##    print src, dst
+                content[idx] = content[idx].replace(src,str(dst))
 
         # 6. detect if any @KEY@ still left undefined
         for v in adj.itervalues():
@@ -611,6 +624,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
         kww.setdefault('required',[])
         for c in content:
             jobname = joblist.addJobXML( c, **kww )
+            print "..add %s"%jobname  #@tsv
             kww['required'] = [jobname]
         return kww['required']
 
@@ -633,18 +647,21 @@ def PHASE2_3( fname, to_encode, info, joblist ):
         #find non empty AVS names
         extra_avs_sections = filter( len, cfg.get_opt( opts, 'EXTRA_AVS' ) )
         #collect their contents
-        extra_avs_contents = map( lambda section: "#EXTRA:%s\n%s"%(section,cfg.config['EXTRA_AVS'].get(section,"")), extra_avs_sections )
+        extra_avs_contents = map( lambda section: u"\n#EXTRA:%s\n%s"%( section,
+                                                                      (''.join(cfg.config['EXTRA_AVS'].get(section,[]))).strip() ),
+                                  extra_avs_sections )
         #add to all passes
-        content = map(lambda basecontent: '\n'.join([basecontent]+extra_avs_contents), content )
+        content = map(lambda basecontent: u'\n'.join([basecontent.strip()]+extra_avs_contents), content )
 
         for idx in range(0,len(content)):
             avsfname = fname + (('.%d'%idx+1) if idx>0 else '' ) + '.avs'
-            with open(avsfname,'wb') as f:
-                f.write( str_encode(content[idx],'cp1251'))
+            ##print my.util.str_encode(content[idx],'cp866')
+            with codecs.open(avsfname,'wb',my.util.baseencode) as f:
+                f.write( content[idx])
 
     # PROCESS {INDEX_JOB}
     detect_pname, encode_tname, content, adj, opts  = getEncodeTokens( '{INDEX_JOB}', xml=True )
-    addJobs( content )
+    AddJobs( content )
 
     index_only = makeint( cfg.get_opt( opts, 'INDEX_ONLY' ) )
     if index_only>0:
@@ -652,23 +669,24 @@ def PHASE2_3( fname, to_encode, info, joblist ):
 
     # PREPARE ALL OTHER JOBS (to not leave unfinished if any error)
     video_tuple = getEncodeTokens( '{VIDEO_PASS}', xml=True, allowEmpty = True )
+    content = video_tuple[2]
+    if len(content):
+        keys['@SRCPATH_VIDEO@'] = _get_elem(content[-1].getroot(),'Output').text
+
     audio_tuple = getEncodeTokens( '{AUDIO_ENCODE}', xml=True, allowEmpty = True )
+    content = audio_tuple[2]
+    if len(content):
+        keys['@SRCPATH_AUDIO@'] = _get_elem(content[-1].getroot(),'Output').text
+
     mux_tuple = getEncodeTokens( '{MUX_JOB}', xml=True )
 
     postponed = postponed_queue if index_only<0 else None
 
     detect_pname, encode_tname, content, adj, opts  = video_tuple
-    required =[]
-    res = addJobs( content, postponed = postponed )
-    if len(res):
-        keys['@SRCPATH_VIDEO@'] = _get_elem(content[-1].getroot(),'Output').text
-        reqiured+=res
+    required = AddJobs( content, postponed = postponed )
 
-    detect_pname, encode_tname, content, adj, opts  = video_tuple
-    res = addJobs( content, postponed = postponed )
-    if len(res):
-        keys['@SRCPATH_AUDIO@'] = _get_elem(content[-1].getroot(),'Output').text
-        reqiured+=res
+    detect_pname, encode_tname, content, adj, opts  = audio_tuple
+    required += AddJobs( content, postponed = postponed )
 
     detect_pname, encode_tname, content, adj, opts  = mux_tuple
     to_del = []
@@ -677,10 +695,11 @@ def PHASE2_3( fname, to_encode, info, joblist ):
     if keys['@SRCPATH_AUDIO@']!=keys['@SRCPATH@']:
         to_del.append( keys['@SRCPATH_AUDIO@'] )
 
-    for delpath in to_del:
-        for c in content:
-             _add_elem( _get_elem(c.getroot(),'FilesToDelete'), 'string', delpath )
-    res = addJobs( content, postponed = postponed )
+    if not makebool( cfg.get_opt( opts, 'KEEP_TMP' ) ):
+        for delpath in to_del:
+            _add_elem( _get_elem(content[-1].getroot(),'FilesToDelete'), 'string', delpath )
+    res = AddJobs( content, postponed = postponed, required = required )       # Variant requirement of mux job from video/audio
+    #res = AddJobs( content, postponed = postponed )
 
     joblist.save()
 

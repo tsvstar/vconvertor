@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 
 megui_path = None
 
+
 re_job = re.compile('^(job[0-9]+)\.xml$', flags = re.IGNORECASE )
 re_jobtext = re.compile('job([0-9]+)', flags = re.IGNORECASE )
 
@@ -26,7 +27,7 @@ def _add_elem( xml_owner, name, text ):
         main = xml_owner.text
     else:
         last = xml_owner.tail
-        main = xml_owner.tail + '__'
+        main = xml_owner.tail + '  '
 
     elem = ET.SubElement(xml_owner, name)
     elem.text = text
@@ -40,30 +41,31 @@ def _add_elem( xml_owner, name, text ):
     elem.tail = last
     return elem
 
-def print_xml ( xml, level='' ):
+def print_xml_tree ( xml, level='' ):
     print level, xml.tag, '|', xml.attrib, '|', xml.text
     for child in xml:
         try: print_xml( child, level+'> ')
         except: pass
 
-
-def print_xml1( root ):
+def print_xml_plain( root ):
     for xml in root.iter():
         print '', xml.tag, '|', xml.attrib, '|', xml.text
 
+def print_xml_childs( xml, prefix='' ):
+    for child in xml:
+        print prefix, child.tag, '|', child.attrib, '|', child.text
 
 """=========================================================================="""
 
 class JobList(object):
     def __init__( self ):
         self.fname = os.path.join( megui_path, 'joblists.xml' )
+        self.jobsdir = os.path.join( megui_path, 'jobs' )
         self.tree = ET.parse(self.fname)
 
         self.joblist = _get_elem( self.tree.getroot(), 'mainJobList' )
         self.dirty = False
         self.findMaxJobNum()
-        #for child in self.joblist:
-        #    print child.tag, '|', child.attrib, '|', child.text
 
     def __del__(self):
         self.save()
@@ -81,7 +83,7 @@ class JobList(object):
         for c in self.joblist:
             m = re_jobtext.match( c.text )
             if m:
-                val = int(m.group(1))+1
+                val = int(m.group(1))
                 if val>self.jobnum:
                     self.jobnum = val
 
@@ -90,21 +92,17 @@ class JobList(object):
         self.dirty = False
 
     def appendJob( self, jobname ):
-        job = ET.SubElement(self.joblist, 'string')
-        job.text = jobname
-        job.tail='\n  '             # pretty-print formatting
-        if len(self.joblist)>1:
-            self.joblist[-2].tail = '\n    '
+        _add_elem( self.joblist, 'string', jobname )
         self.dirty = True
 
     def addPostponed( self, queue ):
         for jobname, targetname, xmlContent in queue:
             xmlContent.write(targetname)
-            appendJob(jobname)
+            self.appendJob(jobname)
 
     def addJobXML( self, xmlContent, required=[], postponed = None ):
-        jobnum += 1
-        jobname = "job%04d" % jobnum
+        self.jobnum += 1
+        jobname = "job%04d" % self.jobnum
         _get_elem(xmlContent,'Name').text   = jobname
         _get_elem(xmlContent,'Status').text = 'WAITING'
         _get_elem(xmlContent,'Start').text  = '0001-01-01T00:00:00'
@@ -113,39 +111,56 @@ class JobList(object):
         for j in reqElement:
             reqElement.remove(j)
         for j in required:
-            elem = ET.SubElement(reqElement, 'string')
-            elem.text = 'job%04d'%(jobnum+j)
-        targetname = os.path.join( megui_path, jobname+'.xml' )
+            job = 'job%04d'%(self.jobnum+j) if isinstance(j,int) else j
+            _add_elem( reqElement, 'string', job )
+        targetname = os.path.join( self.jobsdir, jobname+'.xml' )
         if not isinstance( postponed, list ):
-            xmlContent.write(targetname)
-            appendJob(jobname)
+            xmlContent.write(targetname,encoding='utf-8') #, xml_declaration=True)
+            self.appendJob(jobname)
         else:
             postponed.append( [ jobname, targetname, xmlContent ] )
         return jobname
 
     def delJob( self, jobname ):
         todel = []
+        if isinstance(jobname,basestring):
+            jobname = [ jobname ]
         for elem in self.joblist:
-            if elem.text==jobname:
+            if elem.text in jobname:
                 todel.append(elem)
         for elem in todel:
             self.joblist.remove(elem)
             self.dirty = True
 
 
-def load_jobdir( joblist, verbose = True ):
-    job_path = os.path.join(megui_path,'jobs')
+def load_jobdir( joblist, delAbsent = True, verbose = True ):
+    job_path = joblist.jobsdir
     megui_jobs = joblist.getJobList()
     files = my.util.scan_dir( job_path, recursive = False, pattern = 'job*', verbose = False )
+    lst_missed = []
+    to_del = []
     for f in sorted( files ):
         f = os.path.basename( f )
         m = re_job.match( f )
         if m:
             if m.group(1) not in megui_jobs:
-                if verbose:
-                    print "Missed job found: %s" % m.group(0)
+                lst_missed.append(m.group(0))
                 joblist.appendJob(m.group(1))
     joblist.findMaxJobNum()
+    if delAbsent:
+        lst = map(lambda f: os.path.basename(f), files)
+        for job in megui_jobs:
+            if job+".xml" not in lst:
+                to_del.append(job)
+        if len(to_del):
+            joblist.delJob(to_del)
+
+    if verbose:
+        if len(lst_missed):
+            print "Missed job found: %s" % ', '.join(lst_missed)
+        if len(to_del):
+            print "Remove absent job: %s" % ', '.join(to_del)
+
 
 #ET.fromstring(country_data_as_string)
 #tree = ET.parse('country_data.xml')

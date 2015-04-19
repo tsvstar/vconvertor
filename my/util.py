@@ -2,6 +2,7 @@ import os, sys, time, re, subprocess
 import codecs
 
 baseencode = 'cp1251'           # default encoding (also filesystem encoding on windows)
+console_encoding = 'cp866'      # console encoding
 scriptencoding = baseencode
 base_path = sys.path[0]         # directory of script
 
@@ -25,11 +26,14 @@ def makefloat( value, default = 0 ):
     except: return default
 
 def makebool( value, default = True ):
-    value = value.lower()
-    if value in ['y','yes','t','true']:
-        return True
-    if value in ['n','no','f','false']:
-        return False
+    try:
+        value = value.lower()
+        if value in ['y','yes','t','true']:
+            return True
+        if value in ['n','no','f','false']:
+            return False
+    except:
+        pass
     return makeint( value, default )
 
 # PURPOSE: split "value"(raw or splited string) with separator list "sep_list"
@@ -94,7 +98,7 @@ def str_transcode( s, src, tgt ):
 
 # TRANSCODE src(baseencode) -> cp866
 def str_cp866( s, src = None ):
-    return str_encode( str_decode( s, src ), 'cp866' )
+    return str_encode( str_decode( s, src ), console_encoding )
 
 
 def str_encode_all( lst, enc = None ):
@@ -175,14 +179,14 @@ def unicformat( s, arg = None ):
         raise
 
 def say( s = '', arg = None ):
-    print unicformat( s, arg ).encode('cp866','xmlcharrefreplace')
+    print unicformat( s, arg ).encode(console_encoding,'xmlcharrefreplace')
 
 def say_cp866( s ):
-    print str_encode( s, 'cp866' )
+    print str_encode( s, console_encoding )
 
 def getinput( s ):
     if s:
-        s = str_transcode(s,scriptencoding,'cp866')
+        s = str_transcode(s,scriptencoding,console_encoding)
         print_mark(s)
     return raw_input('')
 
@@ -280,7 +284,7 @@ class PsuedoMultiThread(object):
 
     def add_task( self, value ):
         if self.verbose > 2:
-            print "add_task(%s)" % str_transcode(value,None,'cp866')
+            print "add_task(%s)" % str_transcode(value,None,console_encoding)
         cmd = self.processorObj.add( value )
         if self.verbose > 1: print cmd
         if cmd is None:
@@ -313,7 +317,7 @@ class PsuedoMultiThread(object):
         stdout,stderr = fp.communicate()
         ##print "STDOUT:\n%s\nSTDERR:%s\n" %(stdout,stderr)
         if stderr not in [ None, '']:
-            print "failed task %s\nERROR:%s" % ( str_encode(value,'cp866'), str_encode(stderr,'cp866') )
+            print "failed task %s\nERROR:%s" % ( str_encode(value,console_encoding), str_encode(stderr,console_encoding) )
         else:
             self.processorObj.handle( value, stdout )
 
@@ -507,7 +511,7 @@ class CachedProcessor(object):
 ##################
 def scan_dir( dirpath, recursive = True, pattern = None, caseInsensetive = True, verbose = True):
     if verbose:
-        print "scan_dir(%s)"% str_transcode(dirpath,None,'cp866')
+        print "scan_dir(%s)"% str_transcode(dirpath,None,console_encoding)
     if not os.path.isdir(dirpath):
         return []
 

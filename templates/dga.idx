@@ -2,10 +2,10 @@
 <TaggedJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <EncodingSpeed />
   <Job xsi:type="DGAIndexJob">
-    <Input>@SRC_PATH@</Input>
-    <Output>@SRC_PATH@.dga</Output>
+    <Input>@SRCPATH@</Input>
+    <Output>@SRCPATH@.dga</Output>
     <FilesToDelete>
-      <string>@SRC_PATH_WO_EXT@.log</string>
+      <string>@SRCPATH_WO_EXT@.log</string>
     </FilesToDelete>
     <LoadSources>false</LoadSources>
     <DemuxVideo>false</DemuxVideo>
