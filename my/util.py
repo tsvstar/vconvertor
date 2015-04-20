@@ -117,6 +117,37 @@ def grep_compile( pattern, caseInsensetive = False ):
         return re.compile( pattern, re.IGNORECASE )
     return re.compile( pattern )
 
+def PRINT_MARK(mark):
+    import inspect
+    frame = inspect.stack()[1]
+    print "%s at %s:%s" % (mark, frame[1], frame[2])
+    exit()
+
+"""
+################################################################
+#                  		   DEBUG PRINT     			           #
+################################################################
+"""
+
+logfile = None
+DEBUG_LEVEL = 0
+def DBG( level, s, *kw ):
+    if logfile and level <= DEBUG_LEVEL:
+        if len(kw):
+            s = unicformat(s,*kw)
+        logfile.write(s+'\n')
+
+def DBG_say( level, s, *kw ):
+    if len(kw):
+        s = unicformat(s,*kw)
+    say("%s",s)
+    DBG(0,s)
+def DBG_info( s, *kw ):
+    DBG(0,s,*kw)
+def DBG_trace( s, *kw ):
+    DBG(1,s,*kw)
+
+
 _debugGuard = False
 def debugDump( obj, short = False ):
     global _debugGuard
@@ -131,14 +162,6 @@ def debugDump( obj, short = False ):
     _debugGuard = False
     return rv
 
-def PRINT_MARK(mark):
-    import inspect
-    frame = inspect.stack()[1]
-    print "%s at %s:%s" % (mark, frame[1], frame[2])
-    exit()
-
-
-
 """
 ################################################################
 #                  		   STDOUT					           #
@@ -149,11 +172,6 @@ def init_console():
     # Set console encoding
     reload(sys)
     sys.setdefaultencoding('utf-8')
-
-DEBUG_LEVEL = 0
-def dbg_print( level, s ):
-    if level <= DEBUG_LEVEL:
-        print s
 
 def print_mark( mark ):
     sys.stdout.write(mark)
@@ -272,14 +290,12 @@ class PsuedoMultiThread(object):
     def __enter__( self, *kw, **kww ):
         safe_run( self.processorObj, '__enter__', *kw, **kww )
         return self
-
     def __exit__( self, *kw, **kww ):
-        print "PsuedoMultiThread.__exit__"	##DEBUG
+        ##print "PsuedoMultiThread.__exit__"	##DEBUG
         self.finalize_tasks()
         safe_run( self.processorObj, '__exit__', *kw, **kww )
-
     def __del__( self ):
-        print "PsuedoMultiThread.__del__"	##DEBUG
+        ##print "PsuedoMultiThread.__del__"	##DEBUG
         self.finalize_tasks()
 
     def add_task( self, value ):
@@ -368,11 +384,10 @@ class FileInfoCache(object):
 
 
     def __exit__( self, *kw, **kww ):
-        print "FileInfoCache.__exit__"		##DEBUG
+        ##print "FileInfoCache.__exit__"		##DEBUG
         self.saveFile()
-
     def __del__( self ):
-        print "FileInfoCache.__del__"		##DEBUG
+        ##print "FileInfoCache.__del__"		##DEBUG
         self.saveFile()
 
 
@@ -384,7 +399,7 @@ class FileInfoCache(object):
 
     # MANUALLY FLUSH CACHE (better to use context)
     def saveFile( self ):
-        print "saveFile()"			##DEBUG
+        ##print "saveFile()"			##DEBUG
         if self.dirty:
             return
 

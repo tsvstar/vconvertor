@@ -92,20 +92,6 @@ def prepareARGV( argv ):
 
     return filter( len, argv )
 
-def prepareARGVOld( argv ):
-
-    res = ['']
-    for a in argv:
-        idx = a.find('" ')
-        print a, idx
-        if idx<0:
-            res[-1] += a
-            res.append('')
-            continue
-        res[-1] += a[:idx] + '\\'
-        res.append( a[idx+1:].lstrip() )
-    return filter( len, res )
-
 
 # Simple argument parser with unknown list of options (all --key are treated as option,
 #       all other as arguments).
@@ -236,8 +222,12 @@ class ConfigLoader(object):
                 return
             raise CfgError( -1, "Malformed line (no '=' sign)")
 
-        name, subname = split_pair(name,'{')
-        name = name.upper()
+        name = name.rstrip()
+        if name.startswith('@') and name.endswith('@'):
+            name, subname = '@', name.upper()
+        else:
+            name, subname = split_pair(name,'{')
+            name = name.upper()
         if name not in self.opt:
             raise CfgError( -1, "Unknown option %s" % name )
         ##print "%s|%s" % (name, subname)
@@ -301,7 +291,8 @@ class ConfigLoader(object):
         if e.lineno not in self.cfg_errors:
             print "%s:%d - %s" % ( self.fname, e.lineno, str(e) )
             self.cfg_errors.add( e.lineno )
-        if self.strictError:
+        if ( self.strictError or
+             util.makebool( self.config.setdefault('',{}).setdefault('',{}).get('STRICT',0) ) ):
             raise StrictError()
 
 
