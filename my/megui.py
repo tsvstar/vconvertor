@@ -1,5 +1,5 @@
 import re, os.path
-import my.util
+import util
 
 #https://docs.python.org/2/library/xml.etree.elementtree.html
 import xml.etree.ElementTree as ET
@@ -30,7 +30,8 @@ def _add_elem( xml_owner, name, text ):
         main = xml_owner.tail + '  '
 
     elem = ET.SubElement(xml_owner, name)
-    elem.text = text
+    if text is not None:
+        elem.text = text
     ##print ( "_add_elem(%s)=%s: '%s' '%s' %d" %(name,text, main,last, len(xml_owner)) ).replace('\n','^')
     if len(xml_owner)>1:
         xml_owner[-2].tail = main
@@ -40,6 +41,12 @@ def _add_elem( xml_owner, name, text ):
             xml_owner.text = main
     elem.tail = last
     return elem
+
+def _add_elem_notnil( xml_owner, name, text ):
+    for key,val in xml_owner.items():
+        if key.startswith('{') and key.endswith('}nil') and val=='true':
+            del xml_owner.attrib[key]
+    return _add_elem( xml_owner, name, text )
 
 def print_xml_tree ( xml, level='' ):
     print level, xml.tag, '|', xml.attrib, '|', xml.text
@@ -136,7 +143,7 @@ class JobList(object):
 def load_jobdir( joblist, delAbsent = True, verbose = True ):
     job_path = joblist.jobsdir
     megui_jobs = joblist.getJobList()
-    files = my.util.scan_dir( job_path, recursive = False, pattern = 'job*', verbose = False )
+    files = util.scan_dir( job_path, recursive = False, pattern = 'job*', verbose = False )
     lst_missed = []
     to_del = []
     for f in sorted( files ):
@@ -157,9 +164,9 @@ def load_jobdir( joblist, delAbsent = True, verbose = True ):
 
     if verbose:
         if len(lst_missed):
-            say( "Missed job found: %s", ', '.join(lst_missed) )
+            util.say( "Missed job found: %s", ', '.join(lst_missed) )
         if len(to_del):
-            say( "Remove absent job: %s", ', '.join(to_del) )
+            util.say( "Remove absent job: %s", ', '.join(to_del) )
 
 
 #ET.fromstring(country_data_as_string)

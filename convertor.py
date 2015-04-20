@@ -1,28 +1,5 @@
 # usage: convertor.bat [--debug] [--strict] [--key1=value1] [--key2==value2] [...] DIRECTORY_OR_FILE_TO_PROCESS1 [DIRECTORY_OR_FILE_TO_PROCESS2 [..]]
 
-#TO_TEST: ENCODE{smth}, 2_3 phase, adjustments(raw, path:tag:name, flags(+?)); cfg.@VAL@
-#DONE: if TASK with such name not exists, but exists EXTRA_AVS - add it
-#TOCHECK: use cfg.STRICT in parsing (so if place it in beginning of cfg it will affect)
-
-#TODO: add sonymts patterns,
-
-#TODO: cached config(?)
-#TODO: parse vbrate / ({<float}, {>float}, {>=float, <=float}
-#TODO: better parsing (re.compile("^[A-Za-z_:0-9] *@?[=>]")
-#TODO: alternate syntax ( NAME @=> name=val1|name2>=val2,name2<=val2_1 )
-#DONE: multiple matches to same pattern(for detect) [suffix to make several conditions list matched to same pattern name]
-
-#TODO: adjustment -- give path in XML to fix (  DAR:AR=@{RATIO}@|DAR:X=@{AR_X}@|DAR:Y=@{AR_Y}@ )
-#                 -- can have += (token values could starts from +)
-#                 -- if starts from ? -- means do not add if not existent
-#                                   + -- add a new one anyway (FilesDelete:string for example)
-
-#TODO:  RESOLVE
-# If template starts from '!' - than in case conflict if no other '!' templates found - use this (or even better -- ENCODINGSECTION NAMES COULD STARTS FROM [priority]"
-#TODO: --SHOW_SCAN (make output for scaned )
-#TODO: show list of available tasks and extra_avs if no source given
-#TODO: if token name starts from {!}  - case insensetive comparision (WHAT'S FOR? DETECT?)
-
 import os, sys, copy, re, codecs
 import xml.etree.ElementTree as ET
 
@@ -214,10 +191,22 @@ def main():
 
 def PreloadEncodingTemplates( template_dict ):
     """-- try to load all templates in all patterns. exception on error--"""
-    for pval in template_dict.itervalues():
+    for pname,pval in template_dict.iteritems():
         for tokenname in [ "{AVS_TEMPLATE}", "{INDEX_JOB}", "{VIDEO_PASS}",
                             "{AUDIO_ENCODE}","{MUX_JOB}" ]:
-            cfg.load_multi_templates( pval.get(tokenname,None), fatal = True )
+            val = pval.get(tokenname,None)
+            if val in [None, '']:
+                continue
+            idx = val.find('{')
+            if idx>=0:
+                if val.strip()[-1]!='}':
+                    raise _mycfg.StrictError(u"No enclosing } at token %s of pattern %s" % (tokenname, pname) )
+                val = val[:idx]
+            try:
+                cfg.load_multi_templates( val, fatal = True )
+            except Exception as e:
+                raise _mycfg.StrictError(u"Can't load template '%s' at token %s of pattern %s: %s" % (val,tokenname, pname,str(e)) )
+
 
 
 """-- derived class to process file (get media info) with defined validation--"""
@@ -546,10 +535,13 @@ def PHASE2_3( fname, to_encode, info, joblist ):
     #   raise exception if error and create it if needed
     def _xml_scan( xml, tag_path, err_msg='', createIfNotFound = False ):
         tag = tag_path[-1]
-        elems = map( lambda e: e, root.iter(tag) )
+        elems = map( lambda e: e, xml.iter(tag) )
+        DBG_info("@tsv _xml_scan(parent=%s,tags=%s,%s) elems=%s",[xml.tag, tag_path,createIfNotFound,elems])
+        #DBG_info("@tsv %s %s", [xml, my.util.debugDump(xml)])
         if len(elems)==0:
             if createIfNotFound:
-                elems = [ _add_elem(xml,tag,'') ]
+                DBG_info("@tsv create")
+                elems = [ my.megui._add_elem_notnil(xml,tag,'') ]
             else:
                 raise _mycfg.StrictError( err_msg + "not found adjustment key <%s>"% ':'.join(tag_path) )
         elif len(elems)>1:
@@ -582,8 +574,8 @@ def PHASE2_3( fname, to_encode, info, joblist ):
         # 3. prepare adjustments by keys
         for k,v in adj.items():
             if v.find('@')>=0:
-                for src, dst in keys.iteritems():
-                    v = v.replace(src,dst)
+                for src, dst in keys.iteritems():       #@tsv
+                    v = v.replace(src,str(dst))
                 adj[k]=v
 
         # 4. process opts and keys from adjustments
@@ -597,6 +589,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
             elif len(k)>2 and k[0]=='@' and k[-1]=='@':
                 keys_local[ k[1:-1] ] = v
                 del adj[k]
+        DBG_info("@tsv adj = %s", str(adj))
 
         # 5. prepare content by keys
         for idx in range(0,len(content)):
@@ -627,16 +620,18 @@ def PHASE2_3( fname, to_encode, info, joblist ):
                 root = content[idx].getroot()
 
                 # b) replace from adjustment
-                for name, value in adj:
+                for name, value in adj.items():
                     flag = ''
                     if name[0] in ['?','!','+']:
                         flag = name[0]
                         name = name[1:]
                     tagpath = name.split(':')
                     elem = root
+                    DBG_info("@tsv adj[]=%s/%s",[name,value])
                     for idx in range(0,len(tagpath)):
-                        if flag=='+' and (idx==len(tagpath)+1):
-                            elem = _add_elem(elem,tagpath[-1],'')
+                        if flag=='+' and (idx==len(tagpath)-1):
+                            DBG_info("@tsv addelem(parent=%s,tag=%s)",[elem.tag, tagpath[-1]])
+                            elem =  my.megui._add_elem_notnil(elem,tagpath[-1],'')
                         else:
                             elem = _xml_scan( elem, tagpath[:idx+1], err_msg = err_msg,
                                                 createIfNotFound = (idx!=0 and flag!='?') )
@@ -675,9 +670,12 @@ def PHASE2_3( fname, to_encode, info, joblist ):
             with codecs.open(avsfname,'wb',my.util.baseencode) as f:
                 f.write( content[idx])
 
+    to_del = []
+
     # PROCESS {INDEX_JOB}
     detect_pname, encode_tname, content, adj, opts  = getEncodeTokens( '{INDEX_JOB}', xml=True )
     AddJobs( content )
+    to_del.append( _get_elem(content[-1].getroot(),'Output').text )
 
     index_only = makeint( cfg.get_opt( opts, 'INDEX_ONLY' ) )
     if index_only>0:
@@ -705,7 +703,6 @@ def PHASE2_3( fname, to_encode, info, joblist ):
     required += AddJobs( content, postponed = postponed )
 
     detect_pname, encode_tname, content, adj, opts  = mux_tuple
-    to_del = []
     if keys['@SRCPATH_VIDEO@']!=keys['@SRCPATH@']:
         to_del.append( keys['@SRCPATH_VIDEO@'] )
     if keys['@SRCPATH_AUDIO@']!=keys['@SRCPATH@']:
@@ -723,6 +720,9 @@ def PHASE2_3( fname, to_encode, info, joblist ):
 if __name__ == '__main__':
     import time
     DBG_info("\n===== %s ======", time.strftime("%d.%m.%y %H:%M") )
-    main()
+    try:
+        main()
+    except _mycfg.StrictError as e:
+        say( "ERROR: %s", str(e) )
 
 
