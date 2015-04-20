@@ -1,5 +1,6 @@
 import re, os.path
 import util
+from util import DBG_info, DBG_trace, DBG_trace2, say
 
 """
 ==========================================================
@@ -60,6 +61,7 @@ def prepareARGV( argv ):
     scriptpath = argv[0].replace('\\\\','\\') + '"'
     cmd = cmd.split(scriptpath,1)[1]    # cut off [python, mainscript]
     cmd = util.str_decode(cmd)
+    DBG_trace("COMMAND_LINE = %s", cmd)
 
     argv = [ argv[0] ]
     quoteFlag = False
@@ -90,7 +92,9 @@ def prepareARGV( argv ):
             pre, sym, cmd = _re_find( re_quote, cmd )  # lookup closing quote
             argv[-1] += ( pre if pre!='' else '"' )     # add quoted value ("" means just ")
 
-    return filter( len, argv )
+    argv = filter( len, argv )
+    DBG_info("argv: %s", repr(argv))
+    return argv
 
 
 # Simple argument parser with unknown list of options (all --key are treated as option,
@@ -125,6 +129,7 @@ def ParseArgv( argv, optdict = {} ):
             if v.endswith('"'):
                 v = v[:-1]
             to_process.append(v)
+    DBG_trace("ParseArgv(): keys=%s, to_process=%s", [repr(keys), repr(to_process)] )
     return keys, to_process
 
 
@@ -289,7 +294,7 @@ class ConfigLoader(object):
     # process error ( +suppres dupes +raise StrictError if needed )
     def _print_cfg_error( self, e ):
         if e.lineno not in self.cfg_errors:
-            print "%s:%d - %s" % ( self.fname, e.lineno, str(e) )
+            say( "%s:%d - %s", [ self.fname, e.lineno, str(e) ] )
             self.cfg_errors.add( e.lineno )
         if ( self.strictError or
              util.makebool( self.config.setdefault('',{}).setdefault('',{}).get('STRICT',0) ) ):
@@ -305,8 +310,7 @@ class ConfigLoader(object):
 
         data_type, isname_required, processor = self.sections[sec_type]
 
-        if self.isDebug:
-            print "Process section (%s|%s): %s" % (sec_type,sec_name, str(self.sections[sec_type]) )
+        DBG_trace( "ConfigLoader._process_section (%s|%s): %s" , (sec_type,sec_name, str(self.sections[sec_type]) ) )
 
         if sec_name =='' and isname_required:
             raise CfgError ( lineno, "Section %s have no name - skip it" % sec_type )
@@ -364,7 +368,7 @@ class ConfigLoader(object):
     """ --- getter: get value of option "optname" from dictionary "optdic" ---"""
     def get_opt( self, optdict, optname, subname=None ):
         if optname not in self.opt:
-            print "INTERNAL FAILURE: unknown option %s" % optname
+            say("INTERNAL FAILURE: unknown option %s", optname )
             return None
         if subname is None:
             src_value = optdict.get( optname, None )
@@ -372,8 +376,7 @@ class ConfigLoader(object):
             src_value = optdict.get( optname, {} ).get(subname, None)
 
         rv = self.opt[optname]( '' if src_value is None else src_value )
-        if self.isDebug:
-            print "__getopt(%s,%s) = %s (%s)" %(optname, subname, src_value, str(rv) )
+        DBG_trace( "__getopt(%s,%s) = %s (%s)", (optname, subname, src_value, str(rv) ) )
         return rv
 
 
@@ -392,15 +395,14 @@ class ConfigLoader(object):
         self.cfg_errors = set()
         self.strictError = strictError
 
-        if self.isDebug:
-            print "load_config(%s)" % fname
+        DBG_trace( "ConfigLoader.load_config(%s)", fname )
 
         if content is None:
             try:
                 with open(fname,'rt') as f:
                     content = f.readlines()
             except Exception as e:
-                print "Error: can't load '%s' config" % fname
+                say( "Error: can't load '%s' config", fname )
                 return
 
         section_re = re.compile("^\[([A-Z\_]+)\] *(\= *([A-Za-z0-9\_]+))?")
@@ -423,13 +425,12 @@ class ConfigLoader(object):
                 elif m.group(1) not in self.sections.keys():
                     raise CfgError( lineno, "Unknown section type %s"%m.group(1) )
                 self._process_section( *prev )
-                if self.isDebug:
-                    print "detect section at %d: %s|%s" % ( lineno, m.group(1),m.group(3) )
+                DBG_trace( "detect section at %d: %s|%s", ( lineno, m.group(1),m.group(3) ) )
                 prev = [ m.group(1), m.group(3), [], lineno + 2 ]		# +1 to compensate [section line], +1 because numeration from 1
 
             except CfgError as e:
                 self._print_cfg_error( e )
-                print l.strip()
+                say( l.strip() )
             finally:                                    # on each line: remember content and increase lineno
                 prev[2].append(l)
                 lineno += 1
@@ -458,9 +459,12 @@ class ConfigLoader(object):
     """
     def load_template( self, tname, fatal = True ):
         ##print "load>",self.tpath, tname    #@tsv
+        out = util.unicformat( "ConfigLoader.load_template( %s, %s )", [self.tpath,tname] )
         # found in cache
         if tname in self.templates:
+            DBG_trace( u"%s - FROM CACHE (%s)", [ out, type(self.templates[tname]) ] )
             return self.templates[tname]
+        DBG_trace(out)
 
         self.templates[tname] = None
         # empty value (no template)
@@ -477,9 +481,9 @@ class ConfigLoader(object):
             ##print "+++",fname                   #@tsv
             with open( fname, 'r') as f:
                 self.templates[tname] = f.read()
-            if self.isDebug:
-                print "load_template( %s )" % fname
-        except:
+            DBG_trace( "LOADED %s ", fname )
+        except Exception as e:
+            DBG_trace( "FAIL TO LOAD %s - %s", [fname,str(e)] )
             if fatal:
                 raise
         return self.templates[tname]
@@ -573,11 +577,12 @@ class PatternTemplate(object):
     # auxilary: DEBUG???
     @staticmethod
     def PrintParsedList( parsedlist ):
-        print
+        rv = '\n'
         for pname,pval in parsedlist.items():
             pval1 = pval.copy()
             del pval1['_']
-            print "%s = %s\n%s" % ( pname, pval['_'], str(pval1) )
+            rv += "%s = %s\n%s\n" % ( pname, pval['_'], str(pval1) )
+        return rv
 
 
     """ main function:
@@ -591,6 +596,7 @@ class PatternTemplate(object):
         # parse pattern
         parsed = {}
         #print config
+        DBG_trace("parse_pattern()")
         for pname in config:
             # store printable value
             parsed.setdefault( pname, {} )['_'] = config[pname]
@@ -604,26 +610,26 @@ class PatternTemplate(object):
                     s = s[ len(self.ar_sep[0]): ]
 
                 # parse tokens
-                if self.isDebug: print "STR=%s"%config[pname]
+                DBG_trace( "  pname=%s, STR=%s", [ pname, config[pname] ] )
                 for idx in range(0,len(self.ar_tokens)):
                     value, s, foundat = self._check_sep( self.ar_sep[idx+1], s )
                     if value in ['*','?']:
                         value = None
-                    if self.isDebug: print "SEP=%s; VALUE=%s; S=%s; FOUND=%d; TO=%s" % (self.ar_sep[idx+1], value,s,foundat,self.ar_tokens[idx])
+                    DBG_trace2( "    SEP=%s; VALUE=%s; S=%s; FOUND=%d; TO=%s", (self.ar_sep[idx+1], value,s,foundat,self.ar_tokens[idx]) )
                     parsed[pname][self.ar_tokens[idx]] = value
                     if strictError and foundat<0:
                         raise CfgError ( 0, "is truncated at token %s\nProbably separator or value missed." % self.ar_tokens[idx] )
             except CfgError as e:
-                if not silent:
-                    e = str(e).split('\n')
-                    print "Pattern '%s'%s %s: %s" % ( pname, (' (%s category)' % self.section if self.section is not None else ''), e[0], config[pname] )
-                    if len(e)>1:
-                        print '\n'.join(e[1:])
+                sayfunc = say if not silent else DBG_trace
+                e = str(e).split('\n')
+                sayfunc( "Pattern '%s'%s %s: %s", ( pname, (' (%s category)' % self.section if self.section is not None else ''), e[0], config[pname] ) )
+                if len(e)>1:
+                    sayfunc( '%s', '\n'.join(e[1:]) )
                 if strictError:
                     raise StrictError()
                 del parsed[pname]
                 continue
-            if self.isDebug: print "%s--->%s" % ( pname, str(parsed[pname]) )
+            DBG_trace( "  %s--->%s", ( pname, str(parsed[pname]) ) )
         return parsed
 
 
@@ -677,12 +683,8 @@ class Encoding(object):
         rv_adjustment = None
         rv_defaultname = None
 
-        DBG = False #(p_token_name=='{AVS_TEMPLATE}')
-        if DBG: print "ENTER>rv_adj", rv_adjustment       #@tsv
-
-        ##print pname1
-        ##if pname1=='':
-        ##    return rv_defaultname, '', rv_adjustment, []
+        DBG_trace("get_encode_pattern(%s,%s)", [pname1,p_token_name])
+        DBG_trace2(" ENTER>rv_adj\t%s", rv_adjustment )
 
         lst1 = pname1.split(':')
         ##print lst1     #@tsv
@@ -694,7 +696,7 @@ class Encoding(object):
 
                     pname3 = pname2 + suffix
 
-                    if DBG: print "idx=%d\tpname2=%s\tpname3=%s\tv=%s\trvadj=%s" %(idx,pname2,pname3,self.p_encode.get(pname3,{}).get(p_token_name,'??'),rv_adjustment)   #@tsv
+                    DBG_trace("  idx=%d\tpname2=%s\tpname3=%s\tv=%s\trvadj=%s", (idx,pname2,pname3,self.p_encode.get(pname3,{}).get(p_token_name,'??'),rv_adjustment) )
 
                     if ( pname3 not in self.p_encode ): # if no such pattern found
 
@@ -718,7 +720,7 @@ class Encoding(object):
                     if value is None:
                         continue
                     value, adj = split_pair( value, '{' )
-                    if DBG: print 'value=%s\tadj=%s'%(value,adj)         #@tsv
+                    DBG_trace2('    value=%s\tadj=%s',(value,adj))         #@tsv
                     if adj is not None and adj[-1]!='}':
                         raise StrictError("No enclosing bracket for token '%s' at pattern '%s': %s" %
                                              ( p_token_name, pname3, self.p_encode[pname3] ) )
@@ -738,15 +740,16 @@ class Encoding(object):
                     if template_name == '' and rv_defaultname is not None:
                         rv_defaultname = pname3
 
-                    if DBG: print "rv_adj", rv_adjustment       #@tsv
+                    DBG_trace2("     rv_adj=%s", rv_adjustment )       #@tsv
                     if template_name in [None,'*','?']:
                         continue
 
                     tcontent_list = self.cfg.load_multi_templates( template_name )
                     if tcontent_list is None:
                         raise StrictError("Fail to load template '%s' for token '%s' at pattern '%s'" % ( template_name, p_token_name, pname3 ))
-                    if DBG: print pname3, value, rv_adjustment, "tcontent_list" #@tsv
+                    DBG_trace("    RETURN: pname3=%s,\tvalue=%s\trv_adjustment=%s,\ttconent_list\n", [ pname3, value, rv_adjustment] )  #@tsv
                     return pname3, value, rv_adjustment, tcontent_list
 
+        DBG_trace("    RETURN DEFAULT: rv_defaultname=%s,\t''\trv_adjustment=%s,\t[]\n", [ rv_defaultname, rv_adjustment] )  #@tsv
         return rv_defaultname, '', rv_adjustment, []
 

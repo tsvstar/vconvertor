@@ -1,12 +1,9 @@
 # usage: convertor.bat [--debug] [--strict] [--key1=value1] [--key2==value2] [...] DIRECTORY_OR_FILE_TO_PROCESS1 [DIRECTORY_OR_FILE_TO_PROCESS2 [..]]
 
 #TO_TEST: ENCODE{smth}, 2_3 phase, adjustments(raw, path:tag:name, flags(+?)); cfg.@VAL@
-#TOCHECK: cfg.CONSOLE_ENCODING, FSYSTEM_ENCODING (to support non-russian)
-#KEEP_TMP #TODO: option - delete temporary files (video+audio+stat [?stat del-is defined right in job])
 #DONE: if TASK with such name not exists, but exists EXTRA_AVS - add it
 #TOCHECK: use cfg.STRICT in parsing (so if place it in beginning of cfg it will affect)
 
-#TODO: write extended log (two level: main extended info and parser )
 #TODO: add sonymts patterns,
 
 #TODO: cached config(?)
@@ -32,7 +29,7 @@ import xml.etree.ElementTree as ET
 import my.config as _mycfg
 import my.megui, my.util
 from my.megui import _get_elem, _add_elem
-from my.util import makeint, makebool, splitl, adddict, vstrip, DBG
+from my.util import makeint, makebool, splitl, adddict, vstrip, DBG_info, DBG_trace, DBG_trace2, say
 
 ################################
 
@@ -53,6 +50,8 @@ def main():
     argv = _mycfg.prepareARGV( sys.argv )[1:]
     keys, to_process = _mycfg.ParseArgv( argv, optdict={ 'debug':0, 'strict':0} )
     isDebug, isStrict = keys['debug'], keys['strict']
+
+    my.util.DEBUG_LEVEL = isDebug
 
     if isDebug:
         print "isStrict=%s" % (True if isStrict else False)
@@ -100,7 +99,7 @@ def main():
 
     """ LOAD CONFIG """
 
-    print "\nLoad configs"
+    say( "\nLoad configs" )
 
     # a) load default values
     defaultOpt = (
@@ -122,39 +121,40 @@ def main():
 
     # d) debug output
     if isDebug:
-        print
+        out = '\n'
         for k1,v1 in cfg.config.items():
             for k2,v2 in v1.items():
                 if isinstance( v2, dict ):
                     for k3,v3 in v2.items():
-                        print "[%s][%s]{%s} = %s" % (k1,k2, k3, str(v3) )
+                        out+= "[%s][%s]{%s} = %s\n" % (k1,k2, k3, str(v3) )
                     else:
-                        print "[%s][%s] = %s" % (k1,k2, str(v2) )
+                        out+= "[%s][%s] = %s\n" % (k1,k2, str(v2) )
+        DBG_trace(out)
 
 
     """ PROCESS OPTS (including first iteration of applying tasks) """
 
     mainopts = dict.fromkeys( cfg.opt, '' )                 # initialize dict with '' for all options
     cfg.replace_opt( mainopts, cfg.config[''][None] )       # replace from base section config
+    DBG_trace("opts before tasks: %s",repr(mainopts))       ##@tsv
     mainopts['TASK'] = keys.get('TASK', mainopts['TASK'])   # replace TASK from ARGV if given
-    ##print mainopts  #@tsv
     tasks = filter( len, cfg.get_opt(mainopts, 'TASK') )    # filter splited(on parse) list of tasks
     for t in tasks:
         #if isDebug:
-        print "Apply TASK '%s'" % t
+        say( "Apply TASK '%s'", t )
         if t in cfg.config['TASK']:
             cfg.replace_opt( mainopts, cfg.config['TASK'][t] ) # replace from task
         elif t in cfg.config['EXTRA_AVS']:
             mainopts['EXTRA_AVS'] += ('+' if mainopts['EXTRA_AVS'] else '' ) + t
         else:
-            print "Unknown task '%s'" % my.util.str_encode(t,my.util.console_encoding)
+            say( "Unknown task '%s'", t )
             if isStrict or  cfg.get_opt( mainopts, 'STRICT' ):
                 exit(1)
     cfg.replace_opt( mainopts, keys ) # replace from given in ARGV options (they have most priority)
 
     isStrict = cfg.get_opt( mainopts, 'STRICT' )
     mainopts['MATCH_ONLY'] = set( filter( len, cfg.get_opt( mainopts, 'MATCH_ONLY' ) ) )
-    print mainopts  #@tsv
+    DBG_trace("Result opts: %s",repr(mainopts))       ##@tsv
 
 
     """ PREPARE PATTERNS """
@@ -169,8 +169,8 @@ def main():
     p_encode = cfg.pattern_template['ENCODE'].parse_pattern( cfg.config['ENCODE'][None] )
 
     if isDebug:
-        _mycfg.PatternTemplate.PrintParsedList( p_encode )
-        _mycfg.PatternTemplate.PrintParsedList( p_detect )
+        DBG_trace( "\nP_ENCODE\n   %s", _mycfg.PatternTemplate.PrintParsedList( p_encode ) )
+        DBG_trace( "\nP_DETECT\n   %s", _mycfg.PatternTemplate.PrintParsedList( p_detect ) )
 
     """ CFG VALIDATION: CHECK TEMPLATES EXISTENCE """
     cfg.template_path = os.path.join( my.util.base_path, 'templates')
@@ -178,29 +178,28 @@ def main():
          PreloadEncodingTemplates( p_encode )
 
     """ LOAD + REPAIR MEGUI JOBLIST """
-    print "Load joblist"
+    say( "Load joblist" )
     my.megui.megui_path = cfg.get_opt( mainopts, 'MEGUI' ).rstrip("\\/")+"\\"
     if not len(my.megui.megui_path):
-        print "No path to MEGUI defined"
+        say( "No path to MEGUI defined" )
         exit(1)
     if not os.path.isdir(my.megui.megui_path):
-        print "Invalid path to MEGUI (%s)" % my.megui.megui_path
+        say( "Invalid path to MEGUI (%s)", my.megui.megui_path )
         exit(1)
 
     joblist = my.megui.JobList()
     ##my.megui.print_xml(joblist.tree._root)    #@tsv
     my.megui.load_jobdir(joblist)
     if joblist.dirty:
-        print "Store changes of jobs list"
+        say( "Store changes of jobs list" )
         joblist.save()
 
     if len(to_process)==0:
-        print "No source given"
+        say( "No source given" )
         exit()
 
     """ PHASE1: Collect Info """
     process_queue = PHASE1( to_process )
-    isDebug = 2
 
     """  PHASE2: Add task """
     print
@@ -240,7 +239,8 @@ class MyCachedProcessor( my.util.CachedProcessor ):
 
 
 def PHASE1( to_process ):
-    print "PHASE 1: Collect info"
+    DBG_info('')
+    say( "PHASE 1: Collect info" )
     mediaInfoExe = os.path.join(my.util.base_path,'Media_07.72','MediaInfo.exe')
     #mediaInfoTemplate = os.path.join(my.util.base_path,'Media_07.72','template3.txt')
     #output = '--Output="file://%s"'%mediaInfoTemplate
@@ -271,7 +271,7 @@ Audio;|AUDIO|%Channel(s)%|%Codec%|%Codec/String%|%BitRate/String%|%Alignment%|%D
         elif os.path.isfile(fname):
             worker.add_task(fname)
         else:
-            print "Unknown source: %s" % fname
+            say( "Unknown source: %s" % fname )
             if isStrict:
                 raise _mycfg.StrictError()
 
@@ -287,13 +287,13 @@ Audio;|AUDIO|%Channel(s)%|%Codec%|%Codec/String%|%BitRate/String%|%Alignment%|%D
 """
 
 def PHASE2( process_queue, joblist ):
-    print "PHASE 2: Generate tasks"
+    DBG_info('')
+    say( "PHASE 2: Generate tasks" )
     global p_detect
-
-    isDebugPhase2 = False
 
     # FOR EACH QUEUE ITEM:
     for fname, info in process_queue:
+        DBG_info("\nPHASE 2_1: FIND MATCHES - %s", fname)
         if info in [None,'']:
             say ("No info for '%s' - skip it", fname)
             continue
@@ -301,41 +301,43 @@ def PHASE2( process_queue, joblist ):
         # 1) parse mediainfo
         parsed_info = MyCachedProcessor.validate( info, verbose = True )
         if parsed_info is None:
-            print "^^for file %s" % my.util.str_encode(fname,'cp866')
+            say( "^^for file %s", fname )
             continue
         parsed_info = parsed_info['_']
-        if isDebugPhase2: print parsed_info       #@tsv
+        DBG_info( " parsed_info=%s", parsed_info['_'] )
 
         # 2) find matched 'detect' patterns
         detected = []
         is_forbid = False
         for pname, pdict in p_detect.iteritems():
-            if isDebugPhase2:
-                print
-                print "CHECK", pname         #@tsv
-                for k,v in pdict.iteritems(): print k,'=',repr(v)
+            DBG_trace( "\nCHECK %s" % pname )
+            for k,v in pdict.iteritems():
+                sayfunc = DBG_trace if k=='_' else DBG_trace2
+                sayfunc( " %s=%s" % ( k,repr(v) ) )
 
             for k,v in pdict.iteritems():
                 if k in ['_']:
                     continue
                 if v in [None,'']:
                     continue
-                if isDebugPhase2: print "==", k, v, parsed_info.get(k)
+                out = my.util.unicformat( "token=%s, expect=%s, real=%s", [k, v, parsed_info.get(k)] )
                 if k not in parsed_info:
-                    if isDebugPhase2: print "NOKEY"
+                    DBG_info(" %-10s: NOKEY -- %s", [pname, out] )
                     break
                 if parsed_info[k] != v:
-                    if isDebugPhase2: print "NOTMATCH"
+                    DBG_info(" %-10s: MISMATCH -- %s", [pname, out] )
                     break
+                DBG_trace(" iter. %s", out)
             else:
-                if isDebugPhase2: print "MATCH TO %s"%pname
+                DBG_info(" %-10s: MATCHED",pname)
                 is_forbid = is_forbid or ( pname if pname.startswith('__forbid') else False )
                 detected.append( pname )
+        DBG_trace('')
 
         #3) cutoff suffix from detect pattern (that the thing which allow to make a lot of correspondance to the same patter)
         detected = list( set( map( lambda s: s.split('.',1)[0], detected ) ) )
 
-        print u"%(fname)s\t=> %(w)s*%(h)s@%(fps)s = %(ar)s; %(profile)s ( %(detected)s )" % {
+        say( u"%(fname)s\t=> %(w)s*%(h)s@%(fps)s = %(ar)s; %(profile)s ( %(detected)s )" % {
                         'fname': my.util.str_decode(fname),
                         #'fname': my.util.str_cp866(fname),
                         'w': parsed_info['{WIDTH}'],
@@ -345,14 +347,15 @@ def PHASE2( process_queue, joblist ):
                         'profile': parsed_info['{VPROFILE}'],
                         'detected': ' + '.join(detected) if len(detected) else "BASIC",
                     }
+            )
 
         # "found "__forbid*" pattern - means do not process such video ever
         if is_forbid:
-            print " >> skipped (match to '%s' pattern)" % (is_forbid)
+            say( " >> skipped (match to '%s' pattern)", is_forbid )
             continue
 
         if mainopts['MATCH_ONLY'] and len( set(detected) & mainopts['MATCH_ONLY'] )==0:
-            print " >> skipped( patterns doesn't match to any of MATCH_ONLY: %s)" % ','.join(mainopts['MATCH_ONLY'])
+            say( " >> skipped( patterns doesn't match to any of MATCH_ONLY: %s)", ','.join(mainopts['MATCH_ONLY']) )
             continue
 
         # 4) apply ENFORCE_PATTERN if given
@@ -363,7 +366,7 @@ def PHASE2( process_queue, joblist ):
             if enforce_patterns[0]=='':
                 enforce_patterns = detected + filter(len, enforce_patterns)
             if set(enforce_patterns)!= set(detected):
-                print " >> enforced encoding as %s" % '+'.join(set(enforce_patterns))
+                say( " >> enforced encoding as %s", '+'.join(set(enforce_patterns)) )
             detected = enforce_patterns
 
         #
@@ -401,7 +404,7 @@ def PHASE2( process_queue, joblist ):
 def PHASE2_2( detected ):
     global p_encode
 
-    ##print "PHASE2_2", detected        #@tsv
+    DBG_info("\nPHASE 2_2: RESOLVE ENCODING TEMPLATES (%s)", repr(detected) )
 
     # initialize object which do scaning job
     #   (find for given token and given pattern most precise existed correspondance)
@@ -411,11 +414,10 @@ def PHASE2_2( detected ):
     sysPatternList = [ 'BASIC', 'TOP' ]
 
     # OUTER CYCLE: PROCESS EACH TOKEN
-    ##print cfg.pattern_template['ENCODE']
     for p_token_name in cfg.pattern_template['ENCODE'].ar_tokens:
         if p_token_name in ['_']:       # skip 'printable value'
             continue
-        ##print "!!%s" % p_token_name     #@tsv
+        DBG_trace( "process token %s", p_token_name )    #@tsv
 
         if p_token_name=='{BITRATE}':   # if enforced_bitrate defined, then do not get it from patterns
             enforced_brate = cfg.get_opt( mainopts, 'ENFORCE_BITRATE' )
@@ -462,22 +464,22 @@ def PHASE2_2( detected ):
                 # b) For other cases - error. Should be defined exactly one
                     raise _mycfg.StrictError( "Undefined %s" % p_token_name )
         except _mycfg.StrictError as e:
-            raise   # @tsv
-            print " >> skipped (%s)" % str(e)
+            say( " >> skipped (%s)" % str(e) )
             if isStrict:
                 raise
             return None
         finally:
-            if (isDebug):
-                adj = to_encode_cur.get('adj',None)
-                if adj is not None:
-                    ar_joined_pairs = map(lambda a: a[0] if a[1] is None else '='.join(a), adj)
-                    adj = "{%s}" % ( ','.join(ar_joined_pairs) )
-                print "%(token)s:\tValue=%(value)-15s Path: (%(path)s). " % {
-                            'token': p_token_name,
-                            'path': ' -> '.join(encoder.path),
-                            'value': ( repr(to_encode_cur.get('pvalue',None)) +
-                                       (adj if adj is not None else '') ) }
+            #sayfunc = say if (isDebug) else DBG_trace
+            adj = to_encode_cur.get('adj',None)
+            if adj is not None:
+                ar_joined_pairs = map(lambda a: a[0] if a[1] is None else '='.join(a), adj)
+                adj = "{%s}" % ( ','.join(ar_joined_pairs) )
+            DBG_info( "%(token)s:\tValue=%(value)-15s Path: (%(path)s)" % {
+                        'token': p_token_name,
+                        'path': ' -> '.join(encoder.path),
+                        'value': ( repr(to_encode_cur.get('pvalue',None)) +
+                                   (adj if adj is not None else '') ) }
+                   )
 
         to_encode[p_token_name] = to_encode_cur
 
@@ -489,7 +491,7 @@ def PHASE2_2( detected ):
             adj = "{%s}" % ( ','.join(ar_joined_pairs) )
         to_print.append( str(to_encode[p_token_name].get('pvalue','')) + adj )
 
-    print "  => ENCODE AS: %s" % '|'.join(to_print)
+    say( "  => ENCODE AS: %s" % '|'.join(to_print) )
 
     return to_encode
 
@@ -500,7 +502,7 @@ def PHASE2_2( detected ):
 
 def PHASE2_3( fname, to_encode, info, joblist ):
 
-    ##print "PHASE2_3"
+    DBG_info("\nPHASE 2_3: GENERATE JOBS" )
 
     # Prepare keys (add opts, add detected values)
     def GetKeys(basekeys):
@@ -528,16 +530,14 @@ def PHASE2_3( fname, to_encode, info, joblist ):
     keys = GetKeys(basekeys)
     keys['@{A_DELAY_MS}@'] = "%d" % int(my.util.makefloat(keys['@{A_DELAY_MS}@']))
 
-    """
     # DEBUG INFO
-    print "fname", type(fname), fname
-    print "to_encode", to_encode
-    print to_encode['{AVS_TEMPLATE}']
-    print "info", info
-    print "mainopt", mainopts
-    print 'keys', keys
-    #for k,v in keys.iteritems():  print k,v
-    """
+    if isDebug:
+        DBG_trace( "fname=%s (%s)", [fname,type(fname)])
+        DBG_trace( "to_encode=%s", repr(to_encode) )
+        DBG_trace( "info=%s", repr(info) )
+        DBG_trace( "mainopt=%s", repr(mainopts) )
+        DBG_trace( 'keys=%s', repr(keys) )
+        #for k,v in keys.iteritems():  print k,v
 
     # init copy of main opts (here will be accumulated options from adjustments
     optscopy = copy.deepcopy( mainopts )
@@ -570,6 +570,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
         encode_tname = d.get('pvalue','')                   # name of template for job
         content = filter(len, d.get('tmpl_list',[]) )       # list of templates content (multipass)
         adj_v = dict( filter(len, d.get('adj',[]) ) )       # dict of adjustments
+        DBG_trace( "getEncodeTokens(%s): detect=%s, encode=%s, content=%d, baseAdj=%s, adj=%s", [tokenname,detect_pname,encode_tname,len(content), baseAdjustment, adj_v] )
 
         if not allowEmpty and len(content)==0:
             raise _mycfg.StrictError( "ERROR: Empty %s for %s %s" % ( tokenname, detect_pname, encode_tname) )
@@ -647,7 +648,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
         kww.setdefault('required',[])
         for c in content:
             jobname = joblist.addJobXML( c, **kww )
-            print "..add %s"%jobname  #@tsv
+            DBG_info("..add %s",jobname ) #@tsv
             kww['required'] = [jobname]
         return kww['required']
 
@@ -657,7 +658,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
     detect_pname, encode_tname, content, adj, opts  = getEncodeTokens( '{AVS_TEMPLATE}' )
 
     if os.path.isfile(avsfname) and not cfg.get_opt( opts, 'AVS_OVERWRITE' ):
-        print "AVS exists - do not overwrite"
+        say( "%s exists - do not overwrite", os.path.basename(avsfname) )
     else:
         #find non empty AVS names
         extra_avs_sections = filter( len, cfg.get_opt( opts, 'EXTRA_AVS' ) )
@@ -719,8 +720,9 @@ def PHASE2_3( fname, to_encode, info, joblist ):
     joblist.save()
 
 
-
 if __name__ == '__main__':
+    import time
+    DBG_info("\n===== %s ======", time.strftime("%d.%m.%y %H:%M") )
     main()
 
 

@@ -120,7 +120,7 @@ def grep_compile( pattern, caseInsensetive = False ):
 def PRINT_MARK(mark):
     import inspect
     frame = inspect.stack()[1]
-    print "%s at %s:%s" % (mark, frame[1], frame[2])
+    say( "%s at %s:%s", (mark, frame[1], frame[2]) )
     exit()
 
 """
@@ -136,16 +136,12 @@ def DBG( level, s, *kw ):
         if len(kw):
             s = unicformat(s,*kw)
         logfile.write(s+'\n')
-
-def DBG_say( level, s, *kw ):
-    if len(kw):
-        s = unicformat(s,*kw)
-    say("%s",s)
-    DBG(0,s)
 def DBG_info( s, *kw ):
     DBG(0,s,*kw)
 def DBG_trace( s, *kw ):
     DBG(1,s,*kw)
+def DBG_trace2( s, *kw ):
+    DBG(2,s,*kw)
 
 
 _debugGuard = False
@@ -177,9 +173,12 @@ def print_mark( mark ):
     sys.stdout.write(mark)
     sys.stdout.flush()
 
-def unicformat( s, arg = None ):
-    if arg is None:
+def unicformat( s, *arg ):
+    if not len(arg):
         return str_decode( s, scriptencoding )
+    if len(arg)==1:
+        arg = arg[0]
+
     if isinstance(arg,tuple):
         arg=list(arg)
     if not isinstance(arg,list):
@@ -196,8 +195,10 @@ def unicformat( s, arg = None ):
         for a in arg: print type(a)
         raise
 
-def say( s = '', arg = None ):
-    print unicformat( s, arg ).encode(console_encoding,'xmlcharrefreplace')
+def say( s = '', *arg ):
+    s = unicformat( s, *arg )
+    print s.encode(console_encoding,'xmlcharrefreplace')
+    DBG(0,s)
 
 def say_cp866( s ):
     print str_encode( s, console_encoding )
@@ -237,13 +238,13 @@ class ContextManager(object):
 	self.lst = lst
 
     def __enter__( self ):
-        ##print "ContextManager.__enter__(%s)" % str(self.lst)	##DEBUG
+        DBG_trace( "ContextManager.__enter__(%s)", str(self.lst) )	##DEBUG
         for o in self.lst:
             safe_run(o,"__enter__")
         return self	# what will be binded to "as" argument
 
     def __exit__( self, *kw, **kww ):
-        ##print "ContextManager.__exit__(%s)" % str(self.lst)	##DEBUG
+        DBG_trace("ContextManager.__exit__(%s)", str(self.lst) )	##DEBUG
         for o in self.lst:
             if hasattr(o,"__exit__"):
                 o.__exit__( *kw, **kww )
@@ -291,18 +292,17 @@ class PsuedoMultiThread(object):
         safe_run( self.processorObj, '__enter__', *kw, **kww )
         return self
     def __exit__( self, *kw, **kww ):
-        ##print "PsuedoMultiThread.__exit__"	##DEBUG
+        DBG_trace("PsuedoMultiThread.__exit__")	##DEBUG
         self.finalize_tasks()
         safe_run( self.processorObj, '__exit__', *kw, **kww )
     def __del__( self ):
-        ##print "PsuedoMultiThread.__del__"	##DEBUG
+        DBG_trace("PsuedoMultiThread.__del__")	##DEBUG
         self.finalize_tasks()
 
     def add_task( self, value ):
-        if self.verbose > 2:
-            print "add_task(%s)" % str_transcode(value,None,console_encoding)
+        DBG_trace( "add_task(%s)", value )
         cmd = self.processorObj.add( value )
-        if self.verbose > 1: print cmd
+        DBG_trace("cmd=%s", cmd)
         if cmd is None:
             return
 
@@ -315,25 +315,25 @@ class PsuedoMultiThread(object):
                 raise Exception( "Fail to open pipe")
             self.task_queue.append ( [value, fp] )
         except Exception as e:
-            print "!! Fail to process value: %s" % str(e)
+            say( "!! Fail to process value: %s", str(e) )
 
         while ( len(self.task_queue) >= self.max_threads ):
-            if self.verbose > 2: print "[%d/%d]" % ( len(self.task_queue), self.max_threads )
+            if self.verbose > 2: DBG_trace2( u"[%d/%d]" % ( len(self.task_queue), self.max_threads ) )
             self._task_process()
 
     def  finalize_tasks( self ):
-        if self.verbose > 1: print "finalize_tasks()"
+        DBG_trace( "finalize_tasks()" )
         while len(self.task_queue) > 0:
             self._task_process()
 
     # process first task in queue
     def _task_process( self ):
-        if self.verbose > 1: print "_task_process()"
+        DBG_trace( "_task_process()" )
         value, fp = self.task_queue.pop(0)
         stdout,stderr = fp.communicate()
         ##print "STDOUT:\n%s\nSTDERR:%s\n" %(stdout,stderr)
         if stderr not in [ None, '']:
-            print "failed task %s\nERROR:%s" % ( str_encode(value,console_encoding), str_encode(stderr,console_encoding) )
+            say( "failed task %s\nERROR:%s", ( value, stderr ) )
         else:
             self.processorObj.handle( value, stdout )
 
@@ -348,7 +348,7 @@ class PsuedoMultiThread(object):
     which FileInfoCache( cachefilename ) as cache:
         val0 = cache.get( fname0 )
         if val0 is None:
-            print "not fount %s"%fname0
+            print "not found %s"%fname0
         cache.update( fname1, value1 )
         cache.delete( fname2 )
 ===============================================================
@@ -384,10 +384,10 @@ class FileInfoCache(object):
 
 
     def __exit__( self, *kw, **kww ):
-        ##print "FileInfoCache.__exit__"		##DEBUG
+        DBG_trace("FileInfoCache.__exit__")		##DEBUG
         self.saveFile()
     def __del__( self ):
-        ##print "FileInfoCache.__del__"		##DEBUG
+        DBG_trace("FileInfoCache.__del__")		##DEBUG
         self.saveFile()
 
 
@@ -399,7 +399,7 @@ class FileInfoCache(object):
 
     # MANUALLY FLUSH CACHE (better to use context)
     def saveFile( self ):
-        ##print "saveFile()"			##DEBUG
+        DBG_trace( "FileInfoCache.saveFile()"	)		##DEBUG
         if self.dirty:
             return
 
@@ -412,7 +412,7 @@ class FileInfoCache(object):
 
     # SAFE GET VALUE FROM CACHE (None - not found or invalid)
     def get( self, fname, check = True ):
-        ##print "get %s:>> %s >> %s" % (fname, self._getMTimeTag(fname), self.cache.get(fname,[None]) )
+        DBG_trace( "FileInfoCache.get %s:>> %s >> %s", (fname, self._getMTimeTag(fname), self.cache.get(fname,[None]) ) )
         if fname not in self.cache:
             return None
         if self._getMTimeTag(fname) != self.cache[fname][0]:
@@ -430,7 +430,7 @@ class FileInfoCache(object):
     # quick     if =True - immediate append to the end of cachefile
     # enforce   if =False - do not update if file info exists
     def update( self, fname, value, quick = True, enforce = False ):
-        ##print "update %s %s" % (fname, enforce)
+        DBG_trace( "FileInfoCache.update( %s=>%s ,%s)", (fname, value, enforce) )
         if not enforce and fname in self.cache:
             return
         self.cache[fname] = ( self._getMTimeTag(fname), int(time.time()), value )
@@ -483,10 +483,12 @@ class CachedProcessor(object):
         self.shell = shell
 
     def __enter__( self, *kw, **kww ):
+        DBG_trace("CachedProcessor.__enter__")		##DEBUG
         safe_run( self.cacheObj, '__enter__', *kw, **kww )
         return self
 
     def __exit__( self, *kw, **kww ):
+        DBG_trace("CachedProcessor.__exit__")		##DEBUG
         safe_run( self.cacheObj, '__exit__', *kw, **kww )
 
     def validate( self, value ):
@@ -498,14 +500,13 @@ class CachedProcessor(object):
         value = self.cacheObj.get( fname )
         if value is not None:
             if ( ( value=='' and self.aggresiveCache ) or self.validate(value) ):
-                if self.verbose > 2:
-                    say( "%s: exists in cache", fname )
+                DBG_trace( "add %s: exists in cache", fname )
                 self.processed.append( fname )
                 return None
             self.cacheObj.delete(fname)
 
-        if self.verbose > 1:
-            say( "get info for: %s", fname )
+        sayfunc = say if self.verbose > 1 else DBG_trace
+        sayfunc( "get info for: %s", fname )
         fname = str_encode(fname,'cp1251')      # CPYTHON do not understand unicode; PYPY works ok with unicode so this not need for it
         if self.shell:
             fname = '"%s"' % fname
@@ -513,7 +514,7 @@ class CachedProcessor(object):
 
     def handle( self, fname, value ):
         value = value.rstrip('\n\r')
-        ##print " handle%s\n%s\n" % (fname,value)
+        DBG_trace( "CachedProcessor.handle%s\n%s\n", (fname,value) )
         if self.validate( value ):
             self.cacheObj.update( fname, value )
             self.processed.append( fname )
@@ -525,8 +526,8 @@ class CachedProcessor(object):
 
 ##################
 def scan_dir( dirpath, recursive = True, pattern = None, caseInsensetive = True, verbose = True):
-    if verbose:
-        print "scan_dir(%s)"% str_transcode(dirpath,None,console_encoding)
+    sayfunc = say if verbose > 1 else DBG_trace
+    sayfunc( "scan_dir(%s)", dirpath )
     if not os.path.isdir(dirpath):
         return []
 

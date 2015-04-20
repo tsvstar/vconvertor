@@ -157,9 +157,9 @@ def load_jobdir( joblist, delAbsent = True, verbose = True ):
 
     if verbose:
         if len(lst_missed):
-            print "Missed job found: %s" % ', '.join(lst_missed)
+            say( "Missed job found: %s", ', '.join(lst_missed) )
         if len(to_del):
-            print "Remove absent job: %s" % ', '.join(to_del)
+            say( "Remove absent job: %s", ', '.join(to_del) )
 
 
 #ET.fromstring(country_data_as_string)
