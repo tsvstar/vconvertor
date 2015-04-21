@@ -66,6 +66,7 @@ def main():
 
     	    'ENCODE':        adddict,       # replacing of encoding sequences  #@tsv TO IMPLEMENT!!
     	    'DETECT':        adddict,		# replacing of detect patterns
+            'TEMPLATE':      lambda s: s,   # TODO: templates
             'RESOLVE':       splitl,        # TODO!! RESOLVE{sony:720|_dga} = _dga|dgasony  # if video match to several patterns and they have collision how to process - we can resolve this by saying which encoding pattern should be used instead
 
     	    'MEGUI':         vstrip,		# path to MEGUI
@@ -75,6 +76,7 @@ def main():
     cfg.sections = { "":         [ 'dict', False, _mycfg.ConfigLoader.load_opt_processor],        # if no section defined, then expect OPT=VALUE pair
                      "TASK":  	 [ 'dict', True,  _mycfg.ConfigLoader.load_opt_processor],        # [TASK] contain OPT=VALUE pairs
                      "EXTRA_AVS":[ 'str',  True,  _mycfg.ConfigLoader.load_text_processor],       # [EXTRA_AVS] contain plain text
+                     "TEMPLATE": [ 'dict', False, _mycfg.ConfigLoader.load_opt_processor],        # [TEMPLATE] contain OPT=VALUE pairs
                      "DETECT":	 [ 'dict', False, _mycfg.ConfigLoader.load_pattern_processor],    # [DETECT] contain NAME => VALUE pattern pair
                      "ENCODE":	 [ 'dict', False, _mycfg.ConfigLoader.load_pattern_processor],    # [ENCODE] contain NAME => VALUE pattern pair
     		}
@@ -97,11 +99,17 @@ def main():
     internal = cfg.config['']	#.copy()
     del cfg.config['']
 
-    # b) load regular config files
+    # b) create default sections
+    for sname, value in cfg.sections.items():
+        section = cfg.config.setdefault(sname,{})
+        if not value[1]:
+            section[None] = dict() if value[0]=='dict' else list()
+
+    # c) load regular config files
     cfg.load_config( fname= os.path.join(my.util.base_path, '!convert.cfg' ), strictError = isStrict )
     cfg.load_config( fname= os.path.join(my.util.base_path, '!templates.cfg' ), strictError = isStrict )
 
-    # c) Load pythonized "config"
+    # d) Load pythonized "config"
     cfg.config[''][None].setdefault('@',{})
     try:
         if os.path.isfile("!custom_func.py.cfg"):
@@ -116,7 +124,7 @@ def main():
         err = "Fail to parse !custom_func.py.cfg: %s, %s" % (type(e),str(e))
         if isStrict or cfg.config[''][None].get('STRICT',0):
             raise _mycfg.StrictError(err)
-        print err
+        say( err )
 
     # d) get undefined values from internal default values
     cfg.config[''][None] = cfg.replace_opt( internal[None], cfg.config[''][None] )
@@ -138,6 +146,9 @@ def main():
 
     mainopts = dict.fromkeys( cfg.opt, '' )                 # initialize dict with '' for all options
     cfg.replace_opt( mainopts, cfg.config[''][None] )       # replace from base section config
+    if not isinstance(mainopts.get('TEMPLATE',None), dict): # update opts.TEMPLATE from [TEMPLATE] section
+        mainopts['TEMPLATE'] = {}
+    mainopts['TEMPLATE'].update( cfg.config['TEMPLATE'][None] )
     DBG_trace("opts before tasks: %s",repr(mainopts))       ##@tsv
     mainopts['TASK'] = keys.get('TASK', mainopts['TASK'])   # replace TASK from ARGV if given
     tasks = filter( len, cfg.get_opt(mainopts, 'TASK') )    # filter splited(on parse) list of tasks
@@ -161,10 +172,17 @@ def main():
 
     """ PREPARE PATTERNS """
 
+    def apply_pattern( pname, opt, target ):
+        if isinstance(opt, dict) and opt:
+            say( "Update %s patterns from options: %s" % (pname, ', '.join(opt.keys())) )
+            return target.update( opt )
+
     cfg.pattern_template['DETECT'] = _mycfg.PatternTemplate( 'DETECT',
     						'{CONTAINER}|VIDEO|{WIDTH}x{HEIGHT}@{FPS}|{V_BRATE} {V_BRATE_TYPE}|{RATIO}={AR_X}:{AR_Y}|{VCODEC}|{VPROFILE}|{VSCAN_TYPE}|{VSCAN_ORDER}'+
     						'|AUDIO|{A_CHANNEL}|{A_CODEC}|{A_CODEC2}|{A_BRATE}|{A_ALIGNMENT}|{A_DELAY_MS}')
     cfg.pattern_template['ENCODE'] = _mycfg.PatternTemplate( 'ENCODE', '{BITRATE}|{AVS_TEMPLATE}|{INDEX_JOB}|{VIDEO_PASS}|{AUDIO_ENCODE}|{MUX_JOB}' )
+    apply_pattern( 'DETECT', mainopts.get('DETECT',None), cfg.config['DETECT'][None] )        # copy from opts
+    apply_pattern( 'ENCODE', mainopts.get('ENCODE',None), cfg.config['ENCODE'][None] )
     ##for k in cfg.pattern_template:              # @tsv
     ##    cfg.pattern_template[k].isDebug=True
     p_detect = cfg.pattern_template['DETECT'].parse_pattern( cfg.config['DETECT'][None], strictError = True )
@@ -199,10 +217,9 @@ def main():
     if len(to_process)==0:
         print "No source given"
         exit()
-    if not len(p_detect):
-        raise _mycfg.StrictError("No detect pattern defined")
-    if not len(p_encode):
-        raise _mycfg.StrictError("No encoding pattern defined")
+    for pname in ['TOP','BASIC']:
+        if pname not in p_encode:
+            raise _mycfg.StrictError("No %s encoding pattern defined" % pname)
 
 
     """ PHASE1: Collect Info """
@@ -374,7 +391,7 @@ def PHASE2( process_queue, joblist ):
             continue
 
         if mainopts['MATCH_ONLY'] and len( set(detected) & mainopts['MATCH_ONLY'] )==0:
-            say( " >> skipped( patterns doesn't match to any of MATCH_ONLY: %s)", ','.join(mainopts['MATCH_ONLY']) )
+            say( " >> skipped( patterns doesn't match to any of MATCH_ONLY: %s )", ', '.join(mainopts['MATCH_ONLY']) )
             continue
 
         # 4) apply ENFORCE_PATTERN if given
@@ -427,7 +444,7 @@ def PHASE2_2( detected ):
 
     # initialize object which do scaning job
     #   (find for given token and given pattern most precise existed correspondance)
-    encoder = _mycfg.Encoding( p_encode, cfg, cfg.get_opt( mainopts, 'SUFFIX' ) )
+    encoder = _mycfg.Encoding( p_encode, cfg, mainopts.get('TEMPLATE',{}), cfg.get_opt( mainopts, 'SUFFIX' ) )
 
     to_encode = {}                      # to_encode[job_type] = {pname, pvalue, ?adj?, ?tmpl_list? }
     sysPatternList = [ 'BASIC', 'TOP' ]
@@ -554,7 +571,9 @@ def PHASE2_3( fname, to_encode, info, joblist ):
     # DEBUG INFO
     if isDebug:
         DBG_trace( "fname=%s (%s)", [fname,type(fname)])
-        DBG_trace( "to_encode=%s", repr(to_encode) )
+        DBG_trace( "to_encode==>",  )
+        for k,v in to_encode.iteritems():
+            DBG_trace( "  %s: %s", [repr(k), repr(v)])
         DBG_trace( "info=%s", repr(info) )
         DBG_trace( "mainopt=%s", repr(mainopts) )
         DBG_trace( 'keys=%s', repr(keys) )
@@ -592,15 +611,20 @@ def PHASE2_3( fname, to_encode, info, joblist ):
         # 1. get values
         detect_pname = d.get('pname','')                    # name of pattern for detection
         encode_tname = d.get('pvalue','')                   # name of template for job
-        content = filter(len, d.get('tmpl_list',[]) )       # list of templates content (multipass)
-        adj_v = dict( filter(len, d.get('adj',[]) ) )       # dict of adjustments
-        DBG_trace( "getEncodeTokens(%s): detect=%s, encode=%s, content=%d, baseAdj=%s, adj=%s", [tokenname,detect_pname,encode_tname,len(content), baseAdjustment, adj_v] )
+        tmpl = d.get('tmpl_list',_mycfg.EncTemplate())      # list of templates  (multipass)
+        content = filter(len, tmpl.content )                # list of templates content (multipass)
+        adj_v = my.util.MyOrderedDict( filter(len, d.get('adj',[]) ) )     # dict of adjustments
+        DBG_trace( "getEncodeTokens(%s): detect=%s, encode=%s, template=%s", [tokenname,detect_pname,encode_tname, tmpl] )
+        DBG_trace( "baseAdj=%s, tmplAdj=%s, adj=%s", [baseAdjustment, tmpl.adjustments, adj_v] )        # baseAdjustments - given by code for job type
+                                                                                                        # tmplAdj         - comes from template alias ([TEMPLATE] section)
+                                                                                                        # adj             - given in exact encoding job
 
         if not allowEmpty and len(content)==0:
             raise _mycfg.StrictError( "ERROR: Empty %s for %s %s" % ( tokenname, detect_pname, encode_tname) )
 
-        # 2. adjustment = baseAdjustment + p_encode['adj'](override baseAdjustment)
-        adj = dict(baseAdjustment)
+        # 2. adjustment = baseAdjustment + templateAliasAdjustments+ p_encode['adj'](override baseAdjustment)
+        adj = my.util.MyOrderedDict(baseAdjustment)
+        adj.update(tmpl.adjustments)
         adj.update(adj_v)
 
         # 3. prepare adjustments by keys
@@ -685,7 +709,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
                                                 createIfNotFound = (idx!=0 and flag!='?') )
                     elem.text = value
 
-        return detect_pname, encode_tname, content, adj, optscopy
+        return detect_pname, encode_tname, content, optscopy
 
     def AddJobs( content, **kww ):
         kww.setdefault('required',[])
@@ -698,7 +722,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
 
     # PROCESS {AVS_TEMPLATE}
     avsfname = fname + '.avs'
-    detect_pname, encode_tname, content, adj, opts  = getEncodeTokens( '{AVS_TEMPLATE}' )
+    detect_pname, encode_tname, content, opts  = getEncodeTokens( '{AVS_TEMPLATE}' )
 
     if os.path.isfile(avsfname) and not cfg.get_opt( opts, 'AVS_OVERWRITE' ):
         say( "%s exists - do not overwrite", os.path.basename(avsfname) )
@@ -721,7 +745,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
     to_del = []
 
     # PROCESS {INDEX_JOB}
-    detect_pname, encode_tname, content, adj, opts  = getEncodeTokens( '{INDEX_JOB}', xml=True )
+    detect_pname, encode_tname, content, opts  = getEncodeTokens( '{INDEX_JOB}', xml=True )
     AddJobs( content )
     to_del.append( _get_elem(content[-1].getroot(),'Output').text )
 
@@ -744,13 +768,13 @@ def PHASE2_3( fname, to_encode, info, joblist ):
 
     postponed = postponed_queue if index_only<0 else None
 
-    detect_pname, encode_tname, content, adj, opts  = video_tuple
+    detect_pname, encode_tname, content, opts  = video_tuple
     required = AddJobs( content, postponed = postponed )
 
-    detect_pname, encode_tname, content, adj, opts  = audio_tuple
+    detect_pname, encode_tname, content, opts  = audio_tuple
     required += AddJobs( content, postponed = postponed )
 
-    detect_pname, encode_tname, content, adj, opts  = mux_tuple
+    detect_pname, encode_tname, content, opts  = mux_tuple
     if keys['@SRCPATH_VIDEO@']!=keys['@SRCPATH@']:
         to_del.append( keys['@SRCPATH_VIDEO@'] )
     if keys['@SRCPATH_AUDIO@']!=keys['@SRCPATH@']:

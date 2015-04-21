@@ -523,8 +523,45 @@ class CachedProcessor(object):
                 self.cacheObj.update( fname, '' )
             say( "INVALID OUTPUT(PROBABLY NOT GOOD MEDIA): %s", fname )
 
+"""
+    Customized implementation of OrderedDict
+    Difference is: If set to existed value, than it is moved to the tail of iterator
+"""
+import collections
+class MyOrderedDict( collections.OrderedDict ):
+    def __init__(self, *kw,**kww):
+        super(MyOrderedDict,self).__init__(*kw, **kww)
 
-##################
+    def __setitem__(self, key, value, dict_setitem=dict.__setitem__):
+        __map = getattr(self,'_OrderedDict__map')
+        # Setting an existent item remove its from linked list
+        if key in self:
+            link_prev, link_next, _ = __map.pop(key)
+            link_prev[1] = link_next                        # update link_prev[NEXT]
+            link_next[0] = link_prev                        # update link_next[PREV]
+
+        # Creates a new link at the end of the linked list
+        root = getattr(self,'_OrderedDict__root')
+        last = root[0]
+        last[1] = root[0] = __map[key] = [last, root, key]
+        return dict_setitem(self, key, value)
+
+    def __str__(self):
+        rv = "%s{"%type(self)
+        for k, v in self.iteritems():
+            rv += "%s: %s" %(repr(k), repr(v))
+        rv += "}"
+        return rv
+
+    """
+    def __setitem__(self, key, value, dict_setitem=dict.__setitem__):
+        if key in self:
+            super(MyOrderedDict,self).__delitem__(key)
+        return super(MyOrderedDict,self).__setitem__(key,value, dict_setitem)
+    """
+
+"""##################"""
+
 def scan_dir( dirpath, recursive = True, pattern = None, caseInsensetive = True, verbose = True):
     sayfunc = say if verbose > 1 else DBG_trace
     sayfunc( "scan_dir(%s)", dirpath )

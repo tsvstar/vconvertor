@@ -148,6 +148,23 @@ class StrictError(Exception):
     def __init__( self, message = None ):
         super(StrictError,self).__init__( message )
 
+"""
+====================================
+        AUXILARY CLASS
+  - contain encoding template info
+====================================
+"""
+
+class EncTemplate(object):
+    def __init__(self ):
+        self.content = []
+        self.adjustments = util.MyOrderedDict()
+        self.path = []
+
+    def __str__(self):
+        return "<%s at %x: [%s]: content=%d>" % ( type(self), id(self), '->'.join(self.path), len(self.content) )
+    def __repr__(self):
+        return self.__str__()
 
 """
 ===============================================================
@@ -453,13 +470,13 @@ class ConfigLoader(object):
 
     """
         PURPOSE: get template "tname"
-                (load template from templatedir if not in cache; If
-                    fatal = True - then error on load cause Exception)
+                (load template from templatedir + cache it )
+                    If fatal = True - then error on load cause Exception)
         RETURN: content of template
     """
-    def load_template( self, tname, fatal = True ):
+    def _load_template( self, tname, fatal ):
         ##print "load>",self.tpath, tname    #@tsv
-        out = util.unicformat( "ConfigLoader.load_template( %s, %s )", [self.tpath,tname] )
+        out = util.unicformat( "ConfigLoader._load_template( %s, %s )", [self.tpath,tname] )
         # found in cache
         if tname in self.templates:
             DBG_trace( u"%s - FROM CACHE (%s)", [ out, type(self.templates[tname]) ] )
@@ -491,32 +508,49 @@ class ConfigLoader(object):
     """
         PURPOSE: load one or multi-pass template
                  (tname or [tname.1pass, tname.2pass, ...] )
-        RETURN: ordered list of templates content. None on error(not found)
+        RETURN: ordered list of templates content.
+                    None on error(not found) -- if fatal = False
+                    raise Exception          -- if fatal = True
     """
-    def load_multi_templates( self, tname, fatal = False ):
-        if tname in [None,'','*']:
-            return []
-        if tname in ['copy']:
-            return ['']
+    def load_multi_templates( self, tname, tmpl, fatal = False, aliases = {} ):
+        DBG_trace("load_multi_templates(%s) %s / aliases:%s",[ tname, tmpl, aliases.keys() ])
+        tmpl.path.append(tname)
 
-        loaded = []
+        if tname in [None,'','*']:
+            return tmpl
+        #if tname in ['copy']:   #??? WHAT IS THIS ???
+        #    return ['']
+
+        if tname in aliases:
+            talias = aliases[tname]
+            tname_new, tadj = split_pair(talias,'{')
+            if tadj is not None:
+                if not tadj.endswith('}'):
+                    raise StrictError("No closing '}' for template alias '%s'"%tname_new)
+                adj = filter( len, map( util.vstrip, (tadj[-1]).split(',') ) )
+                for a in adj:
+                    aname, avalue = split_pair(a,'=')
+                    tmpl.adjustments.setdefault( aname, avalue )        # top templates adjustments have priority
+            return self.load_multi_templates(tname_new, fatal, tmpl, aliases )
+
         while True:
-            v = self.load_template('%s.%dpass' % (tname,len(loaded)+1), fatal = False )
+            v = self._load_template('%s.%dpass' % (tname,len(tmpl.content)+1), fatal = False )
             if v is None:
                 break
-            loaded.append( v )
+            tmpl.content.append( v )
 
-        if len(loaded):
-            return loaded
+        if len(tmpl.content):
+            return tmpl
 
-        v = self.load_template( tname, fatal = fatal )
+        try:
+            v = self._load_template( tname, fatal = fatal )
+        except Exception as e:
+            raise StrictError( util.unicformat("Fail to load template %s%s:%s", [ tname, " (%s)"%('->'.join(tmpl.path)) if len(tmpl.path)>1 else '', str(e) ] ) )
         if v is None:
             #raise StrictError("No template found '%s'"%loa)
             return None
-        return [v]
-
-
-
+        tmpl.content = [v]
+        return tmpl
 
 """
 ===============================================================
@@ -652,12 +686,14 @@ class Encoding(object):
     #
     #   p_encode - dict of patterns  ( [patternname] = "value{optional_adj}" )
     #   cfg      - ConfigLoader() object to load found templates
+    #   tmpl_aliases - dict of aliases
     #   suffix   - system suffix     ( example: old, new, '')
     #   verbose  - unused
-    def __init__( self, p_encode, cfg, suffix, verbose = False ):
+    def __init__( self, p_encode, cfg, tmpl_aliases, suffix, verbose = False ):
         self.path = []
         self.p_encode = p_encode
         self.cfg = cfg
+        self.tmpl_aliases = tmpl_aliases if isinstance(tmpl_aliases,dict) else {}
         self.suffix_list = [ '.'+suffix, '' ] if len(suffix) else ['']
         ##self.verbose = verbose
 
@@ -729,7 +765,7 @@ class Encoding(object):
                         brate = util.makeint(value)
                         if brate <= 0:
                             continue
-                        return ( pname3, brate, None, [] )
+                        return ( pname3, brate, None, EncTemplate() )
 
                                                                 # do not replace already getted adjustment
                     if ( (rv_adjustment is None) and (adj is not None) ):
@@ -744,12 +780,12 @@ class Encoding(object):
                     if template_name in [None,'*','?']:
                         continue
 
-                    tcontent_list = self.cfg.load_multi_templates( template_name )
+                    tcontent_list = self.cfg.load_multi_templates( template_name, EncTemplate(), aliases = self.tmpl_aliases )
                     if tcontent_list is None:
                         raise StrictError("Fail to load template '%s' for token '%s' at pattern '%s'" % ( template_name, p_token_name, pname3 ))
                     DBG_trace("    RETURN: pname3=%s,\tvalue=%s\trv_adjustment=%s,\ttconent_list\n", [ pname3, value, rv_adjustment] )  #@tsv
                     return pname3, value, rv_adjustment, tcontent_list
 
         DBG_trace("    RETURN DEFAULT: rv_defaultname=%s,\t''\trv_adjustment=%s,\t[]\n", [ rv_defaultname, rv_adjustment] )  #@tsv
-        return rv_defaultname, '', rv_adjustment, []
+        return rv_defaultname, '', rv_adjustment, EncTemplate()
 

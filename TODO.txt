@@ -1,24 +1,53 @@
 ========  TOTEST ===============
-ENCODE{smth}
 DETECT{smth}
+* IMPORTANT: adj - have to be OrderedDict because order of list could have a sense
+* [TEMPLATES]/cfg.TEMPLATE{name}
 
 ========  TODO ===============
 
-* add sonymts patterns
+* strip() for adjustments
 * process path/to/files/grep_pattern
 * Usage: convertor.py [--debug] [--strict] [--key1=value1] [--key2==value2] [...] DIRECTORY_OR_FILE_TO_PROCESS1 [DIRECTORY_OR_FILE_TO_PROCESS2 [..]]
 
-*  parse videobrate / ({<float}, {>float}, {>=float, <=float}
+*  parse videobrate / ({<float}, {>float}, {>=float, <=float},
 *  better pattern config parsing (re.compile("^[A-Za-z_:0-9] *@?[=>]")
-*  alternate pattern description syntax ( NAME @=> name=val1|name2>=val2,name2<=val2_1 )
 
+*  alternate pattern description syntax ( NAME @=> name=val1|name2>=val2,name2<=val2_1 )
+			name equality value	( equalities: =, ==(float), ~=(insensetive), !=, <>(float), <, >, <=, >= )
 
 * RESOLVE
 * If template starts from '!' - than in case conflict if no other '!' templates found - use this 
-	(or even better -- ENCODINGSECTION NAMES COULD STARTS FROM [priority]"
-* --SHOW_SCAN (make output for scaned )
+	(or even better -- ENCODINGSECTION NAMES COULD STARTS FROM [priority]" )
+
 * show list of available tasks and extra_avs if no source given
 * if token name starts from {!}  - case insensetive comparision (WHAT'S FOR? DETECT?)
+* CRF encoding
+
+* add sonymts patterns
+	x264avchd  = x264base{ ?KeyframeInterval=60, ?NbBframes=5, ?NoFastPSkip}
+	+     <KeyframeInterval>60</KeyframeInterval>
+	+     <NbBframes>5</NbBframes>
+	+     <NoFastPSkip>true</NoFastPSkip>
+	+     <NbRefFrames>7</NbRefFrames>
+	+     <IPFactor>1.3</IPFactor>
+	+     <PBFactor>1.4</PBFactor>
+	+     <BframeBias>50</BframeBias>
+	+     <x264BFramePyramid>2</x264BFramePyramid>
+	+     <Level>14</Level>
+
+
+* --SHOW_SCAN (make output for scaned )
+* tool:
+	- detector	
+	- config modifier
+
+	tool.py videofile file1 file2 ...
+		-- asks detect pattern name 
+		-- auto determine full name to videofile (to detect @SRCPATH@, @BASEPATH@)
+		-- asks BITRATE
+		-- if file is xml -- ask what kind of job(maybe get from xml==> <Job xsi:type="AudioJob">), what is the desired pattern name
+		   if file is not xml - means .avs (only one such one)
+		-- add xmls, add detect pattern, add encoding pattern
 
 
 
@@ -27,12 +56,16 @@ DETECT{smth}
 * multiple matches to same pattern(for detect) [suffix to make several conditions list matched to same pattern name?]
 * custom_func.py.cfg - setter and getter
 * FIX: correct processing of --@OPT@=val and @name@ in .cfg
+* Correctly processed even if no .cfg file defined and for minimal cfg
 
 * _add_elem for mkvmux{DAR:X1:X2=smth} is not pretty print
   --> because X1 will be last elem of DAR and so X1.tail=upper_hierarchy_ident
 
+*ENCODE{smth}
+
 
 adjustment -- give path in XML to fix (  DAR:AR=@{RATIO}@|DAR:X=@{AR_X}@|DAR:Y=@{AR_Y}@ )
+					{DAR:AR=@{RATIO}@,+DAR:X:X1=@{AR_X}@,DAR:Y=@{AR_Y}@}
            -- can have += (token values could starts from +) EXTRA_AVS=+smth
            -- if starts from ? -- means do not add if not existent
                              + -- add a new one anyway (FilesDelete:string for example)
