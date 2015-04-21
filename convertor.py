@@ -1,11 +1,11 @@
 # usage: convertor.bat [--debug] [--strict] [--key1=value1] [--key2==value2] [...] DIRECTORY_OR_FILE_TO_PROCESS1 [DIRECTORY_OR_FILE_TO_PROCESS2 [..]]
 
 import os, sys, copy, re, codecs
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ETree
 
 import my.config as _mycfg
 import my.megui, my.util
-from my.megui import _get_elem, _add_elem
+from my.megui import _get_elem, ET
 from my.util import makeint, makebool, splitl, adddict, vstrip, DBG_info, DBG_trace, DBG_trace2, say
 
 ################################
@@ -573,7 +573,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
         if len(elems)==0:
             if createIfNotFound:
                 ##DBG_info("@tsv create")
-                elems = [ my.megui._add_elem_notnil(xml,tag,'') ]
+                elems = [ ET.add_elem_notnil(xml,tag,'') ]
             else:
                 raise _mycfg.StrictError( err_msg + "not found adjustment key <%s>"% ':'.join(tag_path) )
         elif len(elems)>1:
@@ -664,7 +664,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
                 err_msg = "At template '%s%s' for pattern '%s/%s' " % (encode_tname,suf,detect_pname,tokenname )
 
                 # a) convert to xmltree
-                content[idx] = ET.ElementTree( ET.fromstring(content[idx]) )
+                content[idx] = ETree.ElementTree( ET.fromstring(content[idx]) )
                 root = content[idx].getroot()
 
                 # b) replace from adjustment
@@ -679,7 +679,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
                     for idx in range(0,len(tagpath)):
                         if flag=='+' and (idx==len(tagpath)-1):
                             ##DBG_info("@tsv addelem(parent=%s,tag=%s)",[elem.tag, tagpath[-1]])
-                            elem =  my.megui._add_elem_notnil(elem,tagpath[-1],'')
+                            elem =  ET.add_elem_notnil(elem,tagpath[-1],'')
                         else:
                             elem = _xml_scan( elem, tagpath[:idx+1], err_msg = err_msg,
                                                 createIfNotFound = (idx!=0 and flag!='?') )
@@ -758,7 +758,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
 
     if not makebool( cfg.get_opt( opts, 'KEEP_TMP' ) ):
         for delpath in to_del:
-            _add_elem( _get_elem(content[-1].getroot(),'FilesToDelete'), 'string', delpath )
+            ET.add_elem( _get_elem(content[-1].getroot(),'FilesToDelete'), 'string', delpath )
     res = AddJobs( content, postponed = postponed, required = required )       # Variant requirement of mux job from video/audio
     #res = AddJobs( content, postponed = postponed )
 

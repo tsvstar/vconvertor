@@ -2,7 +2,7 @@ import re, os.path
 import util
 
 #https://docs.python.org/2/library/xml.etree.elementtree.html
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ETree
 
 megui_path = None
 
@@ -10,72 +10,118 @@ megui_path = None
 re_job = re.compile('^(job[0-9]+)\.xml$', flags = re.IGNORECASE )
 re_jobtext = re.compile('job([0-9]+)', flags = re.IGNORECASE )
 
+
+def DBG_info( val ):
+    util.DBG_info( val.replace('\n','~'))
+
+
 # found in child(recursively) first element with given tag
 def _get_elem( xml, name ):
     for elem in xml.iter(name):
         return elem
     return None
 
-def DBG_info( val ):
-    util.DBG_info( val.replace('\n','~'))
+class ET(ETree.ElementTree):
+    def __init__( self, *kw, **kww ):
+        return super(ET,self).__init__(*kw,**kww)
 
-# add to "xml" a new element with "name" and "text"
-# with keeping pretty-print formatting
-def _add_elem( xml_owner, name, text ):
-    DBG_info( "xmlowner=%s; [-2]=%s; [-1]=%s" % ( xml_owner,
-                                              None if len(xml_owner)<2 else xml_owner[-2],
-                                              None if len(xml_owner)<1 else xml_owner[-1],
-                                            )
+    @staticmethod
+    def parse( *kw, **kww ):
+        tree = ETree.parse(*kw,**kww)
+        tree.getroot().parent = None
+        ET._set_parent_recursion( tree.getroot() )
+        return tree
 
-            )
-    util.DBG_info( util.debugDump(xml_owner) )
-    if len(xml_owner)>1:
-        last = xml_owner[-1].tail
-        main = xml_owner[-2].tail
-    elif len(xml_owner)>0:
-        last = xml_owner[-1].tail
-        main = xml_owner.text
-    else:
-        last = xml_owner.tail
-        main = xml_owner.tail + '__'
+    @staticmethod
+    def fromstring( *kw, **kww ):
+        root = ETree.fromstring(*kw,**kww)
+        root.parent = None
+        ET._set_parent_recursion( root )
+        return root
 
-    DBG_info("  last='%s'(%d), main='%s'(%d) (len=%d)" % (last, len(last), main, len(main), len(xml_owner)))
+    @staticmethod
+    def _set_parent_recursion( parent ):
+        for c in parent:
+            c.parent = parent
+            ET._set_parent_recursion( c )
 
-    elem = ET.SubElement(xml_owner, name)
-    if text is not None:
-        elem.text = text
-    ##print ( "_add_elem(%s)=%s: '%s' '%s' %d" %(name,text, main,last, len(xml_owner)) ).replace('\n','^')
-    if len(xml_owner)>1:
-        xml_owner[-2].tail = main
-        DBG_info("  set[-2](%s).tail='%s'(%d)"%(xml_owner[-1], main,len(main)))
-    elif len(xml_owner)<=1:
-        ##print ("change owner text from '%s' to '%s' " % (xml_owner.text, main) ).replace('\n','^')
-        #if len(xml_owner.text.strip())==0:     # Uncomment this to keep text when add child, but default behavior is clean text if first child added
-            xml_owner.text = main
-            DBG_info("  set xmlowner(%s).text='%s'(%d)"%(xml_owner, main,len(main)))
-    elem.tail = last
-    DBG_info("  set elem(%s).tail='%s'(%d)"%(elem, last,len(last)))
-    return elem
+    # return previous sibling, or None if have no sibling no such elem found
+    @staticmethod
+    def _get_prev_sibling( elem ):
+        if elem is None or elem.parent is None:
+            return None
+        for idx in range(0,len(elem.parent)):
+            ##DBG_info("lookup sibling=%s"%elem.parent[idx])
+            if elem.parent[idx]==elem:
+                return elem.parent[idx-1] if idx>0 else None
+        return None
 
-def _add_elem_notnil( xml_owner, name, text ):
-    for key,val in xml_owner.items():
-        if key.startswith('{') and key.endswith('}nil') and val=='true':
-            del xml_owner.attrib[key]
-    return _add_elem( xml_owner, name, text )
+    # add to "xml" a new element with "name" and "text"
+    # with keeping pretty-print formatting
+    @staticmethod
+    def add_elem( xml_owner, name, text ):
+        ##DBG_info( "xmlowner=%s; [-2]=%s; [-1]=%s" % ( xml_owner,
+        ##                                          None if len(xml_owner)<2 else xml_owner[-2],
+        ##                                          None if len(xml_owner)<1 else xml_owner[-1],
+        ##                                        )
+        ##        )
+        ##util.DBG_info( util.debugDump(xml_owner) )
+        if len(xml_owner)>1:
+            last = xml_owner[-1].tail
+            main = xml_owner[-2].tail
+        elif len(xml_owner)>0:
+            last = xml_owner[-1].tail
+            main = xml_owner.text
+        else:
+            parent_prev = ET._get_prev_sibling(xml_owner)
+            if parent_prev is None:
+                last = xml_owner.parent.text
+            else:
+                last = parent_prev.tail
+            main = xml_owner.parent.text + '  '
 
-def print_xml_tree ( xml, level='' ):
-    print level, xml.tag, '|', xml.attrib, '|', xml.text
-    for child in xml:
-        try: print_xml( child, level+'> ')
-        except: pass
+        ##DBG_info("  last='%s'(%d), main='%s'(%d) (len=%d)" % (last, len(last), main, len(main), len(xml_owner)))
 
-def print_xml_plain( root ):
-    for xml in root.iter():
-        print '', xml.tag, '|', xml.attrib, '|', xml.text
+        elem = ETree.SubElement(xml_owner, name)
+        elem.parent = xml_owner
+        if text is not None:
+            elem.text = text
+        ##print ( "_add_elem(%s)=%s: '%s' '%s' %d" %(name,text, main,last, len(xml_owner)) ).replace('\n','^')
+        if len(xml_owner)>1:
+            xml_owner[-2].tail = main
+            ##DBG_info("  set[-2](%s).tail='%s'(%d)"%(xml_owner[-1], main,len(main)))
+        elif len(xml_owner)<=1:
+            ##print ("change owner text from '%s' to '%s' " % (xml_owner.text, main) ).replace('\n','^')
+            #if len(xml_owner.text.strip())==0:     # Uncomment this to keep text when add child, but default behavior is clean text if first child added
+                xml_owner.text = main
+                ##DBG_info("  set xmlowner(%s).text='%s'(%d)"%(xml_owner, main,len(main)))
+        elem.tail = last
+        ##DBG_info("  set elem(%s).tail='%s'(%d)"%(elem, last,len(last)))
+        return elem
 
-def print_xml_childs( xml, prefix='' ):
-    for child in xml:
-        print prefix, child.tag, '|', child.attrib, '|', child.text
+    @staticmethod
+    def add_elem_notnil( xml_owner, name, text ):
+        for key,val in xml_owner.items():
+            if key.startswith('{') and key.endswith('}nil') and val=='true':
+                del xml_owner.attrib[key]
+        return ET.add_elem( xml_owner, name, text )
+
+    @staticmethod
+    def print_xml_tree ( xml, level='' ):
+        print level, xml.tag, '|', xml.attrib, '|', xml.text
+        for child in xml:
+            try: print_xml( child, level+'> ')
+            except: pass
+
+    @staticmethod
+    def print_xml_plain( root ):
+        for xml in root.iter():
+            print '', xml.tag, '|', xml.attrib, '|', xml.text
+
+    @staticmethod
+    def print_xml_childs( xml, prefix='' ):
+        for child in xml:
+            print prefix, child.tag, '|', child.attrib, '|', child.text
 
 """=========================================================================="""
 
@@ -114,7 +160,7 @@ class JobList(object):
         self.dirty = False
 
     def appendJob( self, jobname ):
-        _add_elem( self.joblist, 'string', jobname )
+        ET.add_elem( self.joblist, 'string', jobname )
         self.dirty = True
 
     def addPostponed( self, queue ):
@@ -134,7 +180,7 @@ class JobList(object):
             reqElement.remove(j)
         for j in required:
             job = 'job%04d'%(self.jobnum+j) if isinstance(j,int) else j
-            _add_elem( reqElement, 'string', job )
+            ET.add_elem( reqElement, 'string', job )
         targetname = os.path.join( self.jobsdir, jobname+'.xml' )
         if not isinstance( postponed, list ):
             xmlContent.write(targetname,encoding='utf-8') #, xml_declaration=True)

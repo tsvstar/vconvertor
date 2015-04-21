@@ -1,5 +1,4 @@
 ========  TOTEST ===============
-cfg.@VAL@ = 
 ENCODE{smth}
 DETECT{smth}
 
@@ -8,10 +7,6 @@ DETECT{smth}
 * add sonymts patterns
 * process path/to/files/grep_pattern
 * Usage: convertor.py [--debug] [--strict] [--key1=value1] [--key2==value2] [...] DIRECTORY_OR_FILE_TO_PROCESS1 [DIRECTORY_OR_FILE_TO_PROCESS2 [..]]
-
-
-* _add_elem for mkvmux{DAR:X1:X2=smth} is not pretty print
-  --> because X1 will be last elem of DAR and so X1.tail=upper_hierarchy_ident
 
 *  parse videobrate / ({<float}, {>float}, {>=float, <=float}
 *  better pattern config parsing (re.compile("^[A-Za-z_:0-9] *@?[=>]")
@@ -32,6 +27,10 @@ DETECT{smth}
 * multiple matches to same pattern(for detect) [suffix to make several conditions list matched to same pattern name?]
 * custom_func.py.cfg - setter and getter
 * FIX: correct processing of --@OPT@=val and @name@ in .cfg
+
+* _add_elem for mkvmux{DAR:X1:X2=smth} is not pretty print
+  --> because X1 will be last elem of DAR and so X1.tail=upper_hierarchy_ident
+
 
 adjustment -- give path in XML to fix (  DAR:AR=@{RATIO}@|DAR:X=@{AR_X}@|DAR:Y=@{AR_Y}@ )
            -- can have += (token values could starts from +) EXTRA_AVS=+smth
