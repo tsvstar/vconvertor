@@ -6,9 +6,12 @@ DETECT{smth}
 ========  TODO ===============
 
 * add sonymts patterns
+* process path/to/files/grep_pattern
 * Usage: convertor.py [--debug] [--strict] [--key1=value1] [--key2==value2] [...] DIRECTORY_OR_FILE_TO_PROCESS1 [DIRECTORY_OR_FILE_TO_PROCESS2 [..]]
 * _add_elem for mkvmux{DAR:X1:X2=smth} is not pretty print
 
+* custom_func.py.cfg - setter and getter
+* not sure that --@OPT@=val is processed correctly
 *  parse videobrate / ({<float}, {>float}, {>=float, <=float}
 *  better pattern config parsing (re.compile("^[A-Za-z_:0-9] *@?[=>]")
 *  alternate pattern description syntax ( NAME @=> name=val1|name2>=val2,name2<=val2_1 )

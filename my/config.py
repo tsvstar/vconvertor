@@ -297,7 +297,7 @@ class ConfigLoader(object):
             say( "%s:%d - %s", [ self.fname, e.lineno, str(e) ] )
             self.cfg_errors.add( e.lineno )
         if ( self.strictError or
-             util.makebool( self.config.setdefault('',{}).setdefault('',{}).get('STRICT',0) ) ):
+             util.makebool( self.config.setdefault('',{}).setdefault(None,{}).get('STRICT',0) ) ):
             raise StrictError()
 
 

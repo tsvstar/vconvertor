@@ -92,6 +92,21 @@ def main():
     # b) load files
     cfg.load_config( fname= os.path.join(my.util.base_path, '!convert.cfg' ), strictError = isStrict )
     cfg.load_config( fname= os.path.join(my.util.base_path, '!templates.cfg' ), strictError = isStrict )
+    try:
+        if os.path.isfile("!custom_func.py.cfg"):
+            import imp
+            custom_func_cfg = imp.load_source("custom_func_cfg", "!custom_func.py.cfg")
+            print my.util.debugDump(custom_func_cfg)
+            for name,val in custom_func_cfg.globals():
+                if callable(val):
+                    cfg.config[''][None]['@']["@%s@"%name.upper()] = val
+    except Exception as e:
+        err = "Fail to parse !custom_func.py.cfg: %s" % str(e)
+        if isStrict or cfg.config[''][None].get('STRICT',0):
+            raise _mycfg.StrictError(err)
+        print err
+    print cfg.config[''][None]['@']
+    exit(1)
 
     # c) get undefined values from internal default values
     cfg.config[''][None] = cfg.replace_opt( internal[None], cfg.config[''][None] )
@@ -129,7 +144,7 @@ def main():
                 exit(1)
     cfg.replace_opt( mainopts, keys ) # replace from given in ARGV options (they have most priority)
 
-    isStrict = cfg.get_opt( mainopts, 'STRICT' )
+    isStrict = isStrict or cfg.get_opt( mainopts, 'STRICT' )
     mainopts['MATCH_ONLY'] = set( filter( len, cfg.get_opt( mainopts, 'MATCH_ONLY' ) ) )
     DBG_trace("Result opts: %s",repr(mainopts))       ##@tsv
 
@@ -172,8 +187,13 @@ def main():
         joblist.save()
 
     if len(to_process)==0:
-        say( "No source given" )
+        print "No source given"
         exit()
+    if not len(p_detect):
+        raise _mycfg.StrictError("No detect pattern defined")
+    if not len(p_encode):
+        raise _mycfg.StrictError("No encoding pattern defined")
+
 
     """ PHASE1: Collect Info """
     process_queue = PHASE1( to_process )
@@ -723,6 +743,7 @@ if __name__ == '__main__':
     try:
         main()
     except _mycfg.StrictError as e:
-        say( "ERROR: %s", str(e) )
+        if str(e):
+            say( "ERROR: %s", str(e) )
 
 
