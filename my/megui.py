@@ -16,9 +16,19 @@ def _get_elem( xml, name ):
         return elem
     return None
 
+def DBG_info( val ):
+    util.DBG_info( val.replace('\n','~'))
+
 # add to "xml" a new element with "name" and "text"
 # with keeping pretty-print formatting
 def _add_elem( xml_owner, name, text ):
+    DBG_info( "xmlowner=%s; [-2]=%s; [-1]=%s" % ( xml_owner,
+                                              None if len(xml_owner)<2 else xml_owner[-2],
+                                              None if len(xml_owner)<1 else xml_owner[-1],
+                                            )
+
+            )
+    util.DBG_info( util.debugDump(xml_owner) )
     if len(xml_owner)>1:
         last = xml_owner[-1].tail
         main = xml_owner[-2].tail
@@ -27,7 +37,9 @@ def _add_elem( xml_owner, name, text ):
         main = xml_owner.text
     else:
         last = xml_owner.tail
-        main = xml_owner.tail + '  '
+        main = xml_owner.tail + '__'
+
+    DBG_info("  last='%s'(%d), main='%s'(%d) (len=%d)" % (last, len(last), main, len(main), len(xml_owner)))
 
     elem = ET.SubElement(xml_owner, name)
     if text is not None:
@@ -35,11 +47,14 @@ def _add_elem( xml_owner, name, text ):
     ##print ( "_add_elem(%s)=%s: '%s' '%s' %d" %(name,text, main,last, len(xml_owner)) ).replace('\n','^')
     if len(xml_owner)>1:
         xml_owner[-2].tail = main
+        DBG_info("  set[-2](%s).tail='%s'(%d)"%(xml_owner[-1], main,len(main)))
     elif len(xml_owner)<=1:
         ##print ("change owner text from '%s' to '%s' " % (xml_owner.text, main) ).replace('\n','^')
         #if len(xml_owner.text.strip())==0:     # Uncomment this to keep text when add child, but default behavior is clean text if first child added
             xml_owner.text = main
+            DBG_info("  set xmlowner(%s).text='%s'(%d)"%(xml_owner, main,len(main)))
     elem.tail = last
+    DBG_info("  set elem(%s).tail='%s'(%d)"%(elem, last,len(last)))
     return elem
 
 def _add_elem_notnil( xml_owner, name, text ):

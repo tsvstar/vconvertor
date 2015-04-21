@@ -16,6 +16,9 @@ my.util.console_encoding = 'cp866'      # your console encoding (for russian con
 try: my.util.logfile = codecs.open("convertor.log","a",'utf-8')
 except: pass
 
+ADJ_KEYS_SETTER_LOCAL = False           # if False - setter in adjustments ( {@key@=newvalue,..} ) change key value TO THIS AND ALL LATER jobs of this file
+                                        # if True  - setter in adjustments ( {@key@=newvalue,..} ) change key value ONLY TO THIS job
+
 ################################
 
 def main():
@@ -27,6 +30,11 @@ def main():
     argv = _mycfg.prepareARGV( sys.argv )[1:]
     keys, to_process = _mycfg.ParseArgv( argv, optdict={ 'debug':0, 'strict':0} )
     isDebug, isStrict = keys['debug'], keys['strict']
+
+    for n in keys.keys():
+        if len(n)>2 and n[0]=='@' and n[-1]=='@':
+            keys.setdefault('@',{})[n] = keys[n]
+            del keys[n]
 
     my.util.DEBUG_LEVEL = isDebug
 
@@ -48,7 +56,7 @@ def main():
     	    'AVS_OVERWRITE': makebool,     	# Should .AVS be overwrited
     	    'INDEX_ONLY':    makeint,		# Should only AVS+index job be created[ 0=regular convert, 1=only index job, -1=first all index than all convert]
     	    'KEEP_TMP':      makebool,     	# Should do not remove intermediary files
-    	    '@':             splitl,    	# @{KEY} = value -- set the KEY to use it later in jobs as @KEY@
+    	    '@':             lambda s: s,  	# @{KEY} = value -- set the KEY to use it later in jobs as @KEY@
     	    'EXTRA_AVS':     splitl,    	# if not empty, then add to .AVS file correspondend [EXTRA_AVS=xxx] section. Could be several: extra1+extra2+...
     	    'SUFFIX':	     vstrip,		# suffix for template (if defined will try to use 'name.suffix' template first; '.old' )
 
@@ -89,29 +97,31 @@ def main():
     internal = cfg.config['']	#.copy()
     del cfg.config['']
 
-    # b) load files
+    # b) load regular config files
     cfg.load_config( fname= os.path.join(my.util.base_path, '!convert.cfg' ), strictError = isStrict )
     cfg.load_config( fname= os.path.join(my.util.base_path, '!templates.cfg' ), strictError = isStrict )
+
+    # c) Load pythonized "config"
+    cfg.config[''][None].setdefault('@',{})
     try:
         if os.path.isfile("!custom_func.py.cfg"):
             import imp
+            sys.dont_write_bytecode = True
             custom_func_cfg = imp.load_source("custom_func_cfg", "!custom_func.py.cfg")
-            print my.util.debugDump(custom_func_cfg)
-            for name,val in custom_func_cfg.globals():
-                if callable(val):
+            for name in dir(custom_func_cfg):
+                val = getattr(custom_func_cfg,name)
+                if name.startswith('FN_') and name==name.upper() and callable(val):
                     cfg.config[''][None]['@']["@%s@"%name.upper()] = val
     except Exception as e:
-        err = "Fail to parse !custom_func.py.cfg: %s" % str(e)
+        err = "Fail to parse !custom_func.py.cfg: %s, %s" % (type(e),str(e))
         if isStrict or cfg.config[''][None].get('STRICT',0):
             raise _mycfg.StrictError(err)
         print err
-    print cfg.config[''][None]['@']
-    exit(1)
 
-    # c) get undefined values from internal default values
+    # d) get undefined values from internal default values
     cfg.config[''][None] = cfg.replace_opt( internal[None], cfg.config[''][None] )
 
-    # d) debug output
+    # e) debug output
     if isDebug:
         out = '\n'
         for k1,v1 in cfg.config.items():
@@ -516,14 +526,16 @@ def PHASE2_3( fname, to_encode, info, joblist ):
     # Prepare keys (add opts, add detected values)
     def GetKeys(basekeys):
         keys = {}
+
+        # add detect values
+        for k,v in info.iteritems():
+            keys["@%s@"%k] = v
+
         # add from mainopts
         kopts = cfg.get_opt( mainopts, '@' )
         if isinstance(kopts,dict):
             for k,v in kopts.iteritems():
-                keys["@%s@"%k]=v
-        # add detect values
-        for k,v in info.iteritems():
-            keys["@%s@"%k] = v
+                keys[k]=v
 
         # update/replace from basekeys
         keys.update(basekeys)
@@ -556,11 +568,11 @@ def PHASE2_3( fname, to_encode, info, joblist ):
     def _xml_scan( xml, tag_path, err_msg='', createIfNotFound = False ):
         tag = tag_path[-1]
         elems = map( lambda e: e, xml.iter(tag) )
-        DBG_info("@tsv _xml_scan(parent=%s,tags=%s,%s) elems=%s",[xml.tag, tag_path,createIfNotFound,elems])
-        #DBG_info("@tsv %s %s", [xml, my.util.debugDump(xml)])
+        ##DBG_info("@tsv _xml_scan(parent=%s,tags=%s,%s) elems=%s",[xml.tag, tag_path,createIfNotFound,elems])
+        ##DBG_info("@tsv %s %s", [xml, my.util.debugDump(xml)])
         if len(elems)==0:
             if createIfNotFound:
-                DBG_info("@tsv create")
+                ##DBG_info("@tsv create")
                 elems = [ my.megui._add_elem_notnil(xml,tag,'') ]
             else:
                 raise _mycfg.StrictError( err_msg + "not found adjustment key <%s>"% ':'.join(tag_path) )
@@ -595,11 +607,19 @@ def PHASE2_3( fname, to_encode, info, joblist ):
         for k,v in adj.items():
             if v.find('@')>=0:
                 for src, dst in keys.iteritems():       #@tsv
+                    if callable(dst) and v.find(src)>=0:
+                        dst = dst( keys, optscopy )
                     v = v.replace(src,str(dst))
                 adj[k]=v
 
         # 4. process opts and keys from adjustments
-        keys_local = list( keys )
+        if ADJ_KEYS_SETTER_LOCAL:
+            # CASE: {@key@=val} -- have local effect (only in this job)
+            keys_local = keys.copy()
+        else:
+            # CASE: {@key@=val} -- have global effect (for whole pattern)
+            keys_local = keys
+
         for k,v in adj.items():
             if len(k)>2 and k[0]=='%' and k[-1]=='%':
                 optname = k[1:-1]
@@ -607,15 +627,23 @@ def PHASE2_3( fname, to_encode, info, joblist ):
                     cfg.replace_opt( optscopy, {optname:v} )
                 del adj[k]
             elif len(k)>2 and k[0]=='@' and k[-1]=='@':
-                keys_local[ k[1:-1] ] = v
+                kname = k[1:-1]
+                kval = keys.get(k,None)
+                if callable(kval):
+                    kval(keys_local,optscopy,v)
+                else:
+                    keys_local[ kname ] = v
                 del adj[k]
-        DBG_info("@tsv adj = %s", str(adj))
+        ##DBG_info("@tsv adj = %s", str(adj))
 
         # 5. prepare content by keys
         for idx in range(0,len(content)):
-            for src, dst in keys.iteritems():
+            for src, dst in keys_local.iteritems():
                 ##if src.startswith("@SRCPATH_"):
                 ##    print src, dst
+                if callable(dst) and content[idx].find(src)>=0:
+                    ##my.util.PRINT_MARK('CALL CONTENT %s'% src)
+                    dst = dst(keys_local,optscopy)
                 content[idx] = content[idx].replace(src,str(dst))
 
         # 6. detect if any @KEY@ still left undefined
@@ -647,10 +675,10 @@ def PHASE2_3( fname, to_encode, info, joblist ):
                         name = name[1:]
                     tagpath = name.split(':')
                     elem = root
-                    DBG_info("@tsv adj[]=%s/%s",[name,value])
+                    ##DBG_info("@tsv adj[]=%s/%s",[name,value])
                     for idx in range(0,len(tagpath)):
                         if flag=='+' and (idx==len(tagpath)-1):
-                            DBG_info("@tsv addelem(parent=%s,tag=%s)",[elem.tag, tagpath[-1]])
+                            ##DBG_info("@tsv addelem(parent=%s,tag=%s)",[elem.tag, tagpath[-1]])
                             elem =  my.megui._add_elem_notnil(elem,tagpath[-1],'')
                         else:
                             elem = _xml_scan( elem, tagpath[:idx+1], err_msg = err_msg,

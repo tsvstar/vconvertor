@@ -229,9 +229,9 @@ class ConfigLoader(object):
 
         name = name.rstrip()
         if name.startswith('@') and name.endswith('@'):
-            name, subname = '@', name.upper()
+            name, subname = '@', name.upper()+'}'       #   @name@ -> ['@']['@name@']
         else:
-            name, subname = split_pair(name,'{')
+            name, subname = split_pair(name,'{')        #   name{key} -> [name][key]
             name = name.upper()
         if name not in self.opt:
             raise CfgError( -1, "Unknown option %s" % name )

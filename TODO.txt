@@ -8,10 +8,11 @@ DETECT{smth}
 * add sonymts patterns
 * process path/to/files/grep_pattern
 * Usage: convertor.py [--debug] [--strict] [--key1=value1] [--key2==value2] [...] DIRECTORY_OR_FILE_TO_PROCESS1 [DIRECTORY_OR_FILE_TO_PROCESS2 [..]]
-* _add_elem for mkvmux{DAR:X1:X2=smth} is not pretty print
 
-* custom_func.py.cfg - setter and getter
-* not sure that --@OPT@=val is processed correctly
+
+* _add_elem for mkvmux{DAR:X1:X2=smth} is not pretty print
+  --> because X1 will be last elem of DAR and so X1.tail=upper_hierarchy_ident
+
 *  parse videobrate / ({<float}, {>float}, {>=float, <=float}
 *  better pattern config parsing (re.compile("^[A-Za-z_:0-9] *@?[=>]")
 *  alternate pattern description syntax ( NAME @=> name=val1|name2>=val2,name2<=val2_1 )
@@ -29,14 +30,16 @@ DETECT{smth}
 ========  DONE ===============
 
 * multiple matches to same pattern(for detect) [suffix to make several conditions list matched to same pattern name?]
+* custom_func.py.cfg - setter and getter
+* FIX: correct processing of --@OPT@=val and @name@ in .cfg
 
 adjustment -- give path in XML to fix (  DAR:AR=@{RATIO}@|DAR:X=@{AR_X}@|DAR:Y=@{AR_Y}@ )
            -- can have += (token values could starts from +) EXTRA_AVS=+smth
            -- if starts from ? -- means do not add if not existent
                              + -- add a new one anyway (FilesDelete:string for example)
 
-2_3 phase, adjustments(raw, path:tag:name, flags(+?)); 
-if TASK with such name not exists, but exists EXTRA_AVS - add it
-use cfg.STRICT in parsing (so if place it in beginning of cfg it will affect)
+* 2_3 phase, adjustments(raw, path:tag:name, flags(+?)); 
+* if TASK with such name not exists, but exists EXTRA_AVS - add it
+* use cfg.STRICT in parsing (so if place it in beginning of cfg it will affect)
 
 [CANCEL] cached config(using pickle?) -- for performance. looks like it fast enough anyway
