@@ -19,6 +19,8 @@ except: pass
 ADJ_KEYS_SETTER_LOCAL = False           # if False - setter in adjustments ( {@key@=newvalue,..} ) change key value TO THIS AND ALL LATER jobs of this file
                                         # if True  - setter in adjustments ( {@key@=newvalue,..} ) change key value ONLY TO THIS job
 
+isDebug, isStrict = 0, 0                # default values
+
 ################################
 
 def main():
@@ -26,17 +28,31 @@ def main():
     global postponed_queue                  # OUTPUT VALUES
 
     argvkeys, to_process = initARGV()
+    if argvkeys['help']>0:
+        print "Usage:"
+        print "  convertor.py [--debug] [--strict] [--key1=value1] [--key2==value2] [...] DIR_OR_FILE_TO_PROCESS1 [DIR_OR_FILE_TO_PROCESS2 [..]]"
+        print "\nExample:"
+        print "  convertor.py --strict --TASK=felix+debarrel --INDEX-ONLY=-1 --SUFFIX=new C:\\MY\\VIDEO\\ C:\\MY\\vidfile.mp4"
+
+        initCONFIGS()
+        LoadBaseCONFIGFiles()
+        print "\nAvailable TASK:      %s" % ', '.join( sorted( cfg.config.get('TASK',{}).keys() ) )
+        print "Available EXTRA_AVS: %s" % ', '.join( sorted( cfg.config.get('EXTRA_AVS',{}).keys() ) )
+        exit()
+
     argvkeys = postprocessARGV( argvkeys )
     if isDebug:
         print "isStrict=%s" % (True if isStrict else False)
         print "Extra options: %s" % str(argvkeys)
         print "To process: %s" % str(to_process)
+
+    initCONFIGS()
     parseCONFIGS( argvkeys )
 
     joblist = preprocessMEGUI()
 
     if len(to_process)==0:
-        print "No source given"
+        print "No source given - exit"
         exit()
     for pname in ['TOP','BASIC']:
         if pname not in p_encode:
@@ -58,7 +74,9 @@ def initARGV():
     """ LOAD ARGV """
     my.util.prepare_console()
     argv = _mycfg.prepareARGV( sys.argv )[1:]
-    argvkeys, to_process = _mycfg.ParseArgv( argv, optdict={ 'debug':0, 'strict':0} )
+    if '/?' in argv:
+        return {'help':1}, []
+    argvkeys, to_process = _mycfg.ParseArgv( argv, optdict={ 'debug':0, 'strict':0, 'help':0} )
     return argvkeys, to_process
 
 """========================= """
@@ -76,9 +94,9 @@ def postprocessARGV( argvkeys ):
     return argvkeys
 
 """=== CONFIG PROCESSING ===="""
-def parseCONFIGS( argvkeys ):
-    global isDebug, isStrict
-    global cfg, mainopts, p_encode, p_detect        # OUTPUT VALUES
+def initCONFIGS():
+    global isDebug
+    global cfg                          # OUTPUT VALUES
 
     """ DESCRIBE CONFIG """
     cfg = _mycfg.ConfigLoader( isDebug = isDebug )
@@ -119,6 +137,15 @@ def parseCONFIGS( argvkeys ):
     cfg.tpath = './templates'
 
 
+def LoadBaseCONFIGFiles():
+    global cfg, isStrict
+    cfg.load_config( fname= os.path.join(my.util.base_path, '!convert.cfg' ), strictError = isStrict )
+    cfg.load_config( fname= os.path.join(my.util.base_path, '!templates.cfg' ), strictError = isStrict )
+
+def parseCONFIGS( argvkeys ):
+    global isDebug, isStrict
+    global cfg, mainopts, p_encode, p_detect        # OUTPUT VALUES
+
     """ LOAD CONFIG """
 
     say( "\nLoad configs" )
@@ -141,8 +168,7 @@ def parseCONFIGS( argvkeys ):
             section[None] = dict() if value[0]=='dict' else list()
 
     # c) load regular config files
-    cfg.load_config( fname= os.path.join(my.util.base_path, '!convert.cfg' ), strictError = isStrict )
-    cfg.load_config( fname= os.path.join(my.util.base_path, '!templates.cfg' ), strictError = isStrict )
+    LoadBaseCONFIGFiles()
 
     # d) Load pythonized "config"
     cfg.config[''][None].setdefault('@',{})

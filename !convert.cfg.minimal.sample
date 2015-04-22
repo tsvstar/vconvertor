@@ -1,0 +1,6 @@
+MEGUI = C:\MY\MeGUI_2525_x86
+BITRATE = 1000
+
+[ENCODE]
+TOP		=> |base.avs|ffindex.idx|?|?|?                                       		# TOP OF ANY HIERARCHY (complete default)
+BASIC		=> -1000|?|?|x264base|aac_base|mkvmux						# 2ND LAYER OF HIERARCHY - unknown video will be parsed in this way

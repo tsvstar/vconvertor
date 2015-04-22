@@ -5,12 +5,20 @@
 ========  TODO ===============
 
 * process path/to/files/grep_pattern
-* Usage: convertor.py [--debug] [--strict] [--key1=value1] [--key2==value2] [...] DIRECTORY_OR_FILE_TO_PROCESS1 [DIRECTORY_OR_FILE_TO_PROCESS2 [..]]
 
 *  parse videobrate / ({<float}, {>float}, {>=float, <=float},
 *  better pattern config parsing (re.compile("^[A-Za-z_:0-9] *@?[=>]")
 *  alternate pattern description syntax ( NAME @=> name=val1|name2>=val2,name2<=val2_1 )
 			name equality value	( equalities: =, ==(float), ~=(insensetive), !=, <>(float), <, >, <=, >= )
+
+## ALTERNATE SYNTAX: TODO
+#sony:720  ==> width=1440|height=1080|fps==50|v_brate>11|vcodec=AVC|vprofile=Main@L4.0|vscan_type=Progressive
+
+
+* SKIP_EXISTED -- detect by <Output> target mux job - scan joblists 
+# ADJUSTMENT{name} -- extra adjustment
+* make_boolask (-1,False,True)	{ -1= <0, '?', 'ask'}
+
 
 * RESOLVE
 * If template starts from '!' - than in case conflict if no other '!' templates found - use this 
@@ -43,6 +51,8 @@
 
 
 ========  DONE ===============
+
+* Usage: convertor.py [--debug] [--strict] [--key1=value1] [--key2==value2] [...] DIRECTORY_OR_FILE_TO_PROCESS1 [DIRECTORY_OR_FILE_TO_PROCESS2 [..]]
 
 * multiple matches to same pattern(for detect) [suffix to make several conditions list matched to same pattern name?]
 * custom_func.py.cfg - setter and getter

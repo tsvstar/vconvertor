@@ -26,7 +26,7 @@
       <NbThreads>0</NbThreads>
       <x264PresetLevel>medium</x264PresetLevel>
       <x264PsyTuning>NONE</x264PsyTuning>
-      <QuantizerCRF>@CRF@</QuantizerCRF>
+      <QuantizerCRF>@BITRATE@</QuantizerCRF>
       <InterlacedMode>progressive</InterlacedMode>
       <TargetDeviceXML>0</TargetDeviceXML>
       <BlurayCompatXML>False</BlurayCompatXML>

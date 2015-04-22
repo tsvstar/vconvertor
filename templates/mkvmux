@@ -3,7 +3,7 @@
   <EncodingSpeed />
   <Job xsi:type="MuxJob">
     <Input>@SRCPATH_VIDEO@</Input>
-    <Output>@SRCPATH@-mux@BITRATE@.mkv</Output>
+    <Output>@SRCPATH@-mux@BITRATE@@SUFFIX@.mkv</Output>
     <FilesToDelete />
     <ContainerTypeString>MKV</ContainerTypeString>
     <Codec />
@@ -13,7 +13,7 @@
     <Overhead>4.3</Overhead>
     <Settings>
       <MuxedInput />
-      <MuxedOutput>@SRCPATH@-mux@BITRATE@.mkv</MuxedOutput>
+      <MuxedOutput>@SRCPATH@-mux@BITRATE@@SUFFIX@.mkv</MuxedOutput>
       <VideoInput>@SRCPATH_VIDEO@</VideoInput>
       <AudioStreams>
         <MuxStream>
