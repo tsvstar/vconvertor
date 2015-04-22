@@ -526,13 +526,19 @@ class CachedProcessor(object):
 """
     Customized implementation of OrderedDict
     Difference is: If set to existed value, than it is moved to the tail of iterator
+
+    TODO: Important!!
+        Looks like this is implementation-dependent.
+        many operations could broke the order
 """
 import collections
 class MyOrderedDict( collections.OrderedDict ):
     def __init__(self, *kw,**kww):
         super(MyOrderedDict,self).__init__(*kw, **kww)
 
+    """
     def __setitem__(self, key, value, dict_setitem=dict.__setitem__):
+        DBG_trace( debugDump(self) )
         __map = getattr(self,'_OrderedDict__map')
         # Setting an existent item remove its from linked list
         if key in self:
@@ -545,20 +551,44 @@ class MyOrderedDict( collections.OrderedDict ):
         last = root[0]
         last[1] = root[0] = __map[key] = [last, root, key]
         return dict_setitem(self, key, value)
-
-    def __str__(self):
-        rv = "%s{"%type(self)
-        for k, v in self.iteritems():
-            rv += "%s: %s" %(repr(k), repr(v))
-        rv += "}"
-        return rv
-
     """
+
+    def __repr__(self):
+        return strMap(self,True,False)
+    def __str__(self):
+        return strMap(self,True,False)
+
+    #"""
     def __setitem__(self, key, value, dict_setitem=dict.__setitem__):
+        ##DBG_trace("_set_(%s,%s)"%(key,value))
         if key in self:
             super(MyOrderedDict,self).__delitem__(key)
-        return super(MyOrderedDict,self).__setitem__(key,value, dict_setitem)
-    """
+        return super(MyOrderedDict,self).__setitem__(key,value)
+    #"""
+
+    def update( self, src ):
+        if isinstance( src, dict ):
+            for k,v in src.items():
+                self.__setitem__(k,v)
+        else:
+            for k,v in iter(src):
+                self.__setitem__(k,v)
+
+    def setdefault( self, key, value ):
+        if key not in value:
+            self.__setitem__( key, value )
+        return self[key]
+
+
+def strMap( d, isRepr=True, multiLine=False):
+    out = map( lambda i: u"%s: %s" %(repr(i[0]), repr(i[1])), d.iteritems())
+    if multiLine:
+        prefix = (u"{%s}==>\n"%type(d)) if isRepr else ""
+        return u"%s%s" % ( prefix, '\n'.join(out))
+    else:
+        prefix = (u"%s: "%type(d)) if isRepr else ""
+        return u"{%s}" % ( ', '.join(out))
+
 
 """##################"""
 

@@ -1,17 +1,14 @@
 ========  TOTEST ===============
-DETECT{smth}
-* IMPORTANT: adj - have to be OrderedDict because order of list could have a sense
-* [TEMPLATES]/cfg.TEMPLATE{name}
+? strip() for adjustments
+* add sonymts patterns
 
 ========  TODO ===============
 
-* strip() for adjustments
 * process path/to/files/grep_pattern
 * Usage: convertor.py [--debug] [--strict] [--key1=value1] [--key2==value2] [...] DIRECTORY_OR_FILE_TO_PROCESS1 [DIRECTORY_OR_FILE_TO_PROCESS2 [..]]
 
 *  parse videobrate / ({<float}, {>float}, {>=float, <=float},
 *  better pattern config parsing (re.compile("^[A-Za-z_:0-9] *@?[=>]")
-
 *  alternate pattern description syntax ( NAME @=> name=val1|name2>=val2,name2<=val2_1 )
 			name equality value	( equalities: =, ==(float), ~=(insensetive), !=, <>(float), <, >, <=, >= )
 
@@ -23,32 +20,26 @@ DETECT{smth}
 * if token name starts from {!}  - case insensetive comparision (WHAT'S FOR? DETECT?)
 * CRF encoding
 
-* add sonymts patterns
-	x264avchd  = x264base{ ?KeyframeInterval=60, ?NbBframes=5, ?NoFastPSkip}
-	+     <KeyframeInterval>60</KeyframeInterval>
-	+     <NbBframes>5</NbBframes>
-	+     <NoFastPSkip>true</NoFastPSkip>
-	+     <NbRefFrames>7</NbRefFrames>
-	+     <IPFactor>1.3</IPFactor>
-	+     <PBFactor>1.4</PBFactor>
-	+     <BframeBias>50</BframeBias>
-	+     <x264BFramePyramid>2</x264BFramePyramid>
-	+     <Level>14</Level>
-
-
 * --SHOW_SCAN (make output for scaned )
 * tool:
 	- detector	
 	- config modifier
 
-	tool.py videofile file1 file2 ...
-		-- asks detect pattern name 
+	tool.py srcvideofile file1 file2 ...
+	or tool.py srcvideofile avsfile jobname1 jobname2 ...
+		-- asks detect pattern name (check name collision - propose suffix) 
+			--> used to make templates names ( pname.avs, pname_a, pname_v, pname_idx, pname_mux )
 		-- auto determine full name to videofile (to detect @SRCPATH@, @BASEPATH@)
-		-- asks BITRATE
+		-- asks BITRATE/CRF (variable information exists? @BITRATE@=, then enter your own in format @KEY@=num)
 		-- if file is xml -- ask what kind of job(maybe get from xml==> <Job xsi:type="AudioJob">), what is the desired pattern name
 		   if file is not xml - means .avs (only one such one)
 		-- add xmls, add detect pattern, add encoding pattern
-
+		-- try to detect - if any existed detect pattern matched - warn about it (prevent futher collisions)
+		-- try to make template alias instead of copy xml (if mostly equal, same number of pass, no delete
+		-- enter essential variable info (CRF, bitrate)
+		-- maybe even don't need to give file list - just find last correspondance(?). going thru joblist, find requirements and links (input-output, required_job, ..)
+		   or maybe give only one related job
+		* write to !extra.cfg file
 
 
 ========  DONE ===============
@@ -61,8 +52,11 @@ DETECT{smth}
 * _add_elem for mkvmux{DAR:X1:X2=smth} is not pretty print
   --> because X1 will be last elem of DAR and so X1.tail=upper_hierarchy_ident
 
-*ENCODE{smth}
+*ENCODE{smth}, DETECT{smth}
+* if given ENCODE{}, DETECT{} is empty - remove it from list (for TASK/OPTION sections)
 
+* IMPORTANT: adj - have to be OrderedDict because order of list could have a sense
+* [TEMPLATES]/cfg.TEMPLATE{name}
 
 adjustment -- give path in XML to fix (  DAR:AR=@{RATIO}@|DAR:X=@{AR_X}@|DAR:Y=@{AR_Y}@ )
 					{DAR:AR=@{RATIO}@,+DAR:X:X1=@{AR_X}@,DAR:Y=@{AR_Y}@}
@@ -74,4 +68,18 @@ adjustment -- give path in XML to fix (  DAR:AR=@{RATIO}@|DAR:X=@{AR_X}@|DAR:Y=@
 * if TASK with such name not exists, but exists EXTRA_AVS - add it
 * use cfg.STRICT in parsing (so if place it in beginning of cfg it will affect)
 
+
+	x264avchd  = x264base{ ?KeyframeInterval=60, ?NbBframes=5, ?NoFastPSkip}
+	+     <KeyframeInterval>60</KeyframeInterval>
+	+     <NbBframes>5</NbBframes>
+	+     <NoFastPSkip>true</NoFastPSkip>
+	+     <NbRefFrames>7</NbRefFrames>
+	+     <IPFactor>1.3</IPFactor>
+	+     <PBFactor>1.4</PBFactor>
+	+     <BframeBias>50</BframeBias>
+	+     <x264BFramePyramid>2</x264BFramePyramid>
+	+     <Level>14</Level>
+
+
 [CANCEL] cached config(using pickle?) -- for performance. looks like it fast enough anyway
+

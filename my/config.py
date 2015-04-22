@@ -166,6 +166,8 @@ class EncTemplate(object):
     def __repr__(self):
         return self.__str__()
 
+
+
 """
 ===============================================================
             MAIN CLASS TO LOAD CONFIG
@@ -236,7 +238,7 @@ class ConfigLoader(object):
              b) OPTION{extra}=VALUE    # comment
                 --> self.config[sec_type][sec_name][OPTION] = {OPTIONAL_EXTRA: VALUE,.. }
     """
-    def load_opt_processor( self, sec_type, sec_name, line ):
+    def load_opt_processor( self, sec_type, sec_name, line, checkOpt = True, optNameUpper = True ):
         line = line.split('#',1)[0]     # cutoff comments
         name, value = split_pair( line, '=', strip = True  )
         if value is None:
@@ -249,8 +251,9 @@ class ConfigLoader(object):
             name, subname = '@', name.upper()+'}'       #   @name@ -> ['@']['@name@']
         else:
             name, subname = split_pair(name,'{')        #   name{key} -> [name][key]
-            name = name.upper()
-        if name not in self.opt:
+            if optNameUpper:
+                name = name.upper()
+        if checkOpt and name not in self.opt:
             raise CfgError( -1, "Unknown option %s" % name )
         ##print "%s|%s" % (name, subname)
 
@@ -275,6 +278,8 @@ class ConfigLoader(object):
         if keyexist:
             raise CfgError( -1, "{Warning} Option %s is defined twice" % name )
 
+    def load_opttmpl_processor( self, sec_type, sec_name, line ):
+        self.load_opt_processor( sec_type, sec_name, line, checkOpt = False, optNameUpper = False )
 
     """ * Process plain text section.
           format:
@@ -527,11 +532,11 @@ class ConfigLoader(object):
             if tadj is not None:
                 if not tadj.endswith('}'):
                     raise StrictError("No closing '}' for template alias '%s'"%tname_new)
-                adj = filter( len, map( util.vstrip, (tadj[-1]).split(',') ) )
+                adj = filter( len, map( util.vstrip, (tadj[:-1]).split(',') ) )
                 for a in adj:
                     aname, avalue = split_pair(a,'=')
                     tmpl.adjustments.setdefault( aname, avalue )        # top templates adjustments have priority
-            return self.load_multi_templates(tname_new, fatal, tmpl, aliases )
+            return self.load_multi_templates(tname_new, tmpl, fatal, aliases )
 
         while True:
             v = self._load_template('%s.%dpass' % (tname,len(tmpl.content)+1), fatal = False )
@@ -789,3 +794,14 @@ class Encoding(object):
         DBG_trace("    RETURN DEFAULT: rv_defaultname=%s,\t''\trv_adjustment=%s,\t[]\n", [ rv_defaultname, rv_adjustment] )  #@tsv
         return rv_defaultname, '', rv_adjustment, EncTemplate()
 
+
+    @staticmethod
+    def getAdjPrintable( adjList ):
+        if isinstance(adjList,dict):
+            adj = adjList.items()
+        elif isinstance(adjList,list):
+            adj = adjList
+        else:
+            return ''
+        ar_joined_pairs = map(lambda a: a[0] if a[1] is None else '='.join(a), adj)
+        return "{%s}" % ( ', '.join(ar_joined_pairs) )

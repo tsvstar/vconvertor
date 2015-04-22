@@ -22,30 +22,65 @@ ADJ_KEYS_SETTER_LOCAL = False           # if False - setter in adjustments ( {@k
 ################################
 
 def main():
-    global cfg, isDebug, isStrict, mainopts
-    global p_encode, p_detect, postponed_queue
+    global p_encode                         # INPUT VALUES
+    global postponed_queue                  # OUTPUT VALUES
 
+    argvkeys, to_process = initARGV()
+    argvkeys = postprocessARGV( argvkeys )
+    if isDebug:
+        print "isStrict=%s" % (True if isStrict else False)
+        print "Extra options: %s" % str(argvkeys)
+        print "To process: %s" % str(to_process)
+    parseCONFIGS( argvkeys )
+
+    joblist = preprocessMEGUI()
+
+    if len(to_process)==0:
+        print "No source given"
+        exit()
+    for pname in ['TOP','BASIC']:
+        if pname not in p_encode:
+            raise _mycfg.StrictError("No %s encoding pattern defined" % pname)
+
+    """ PHASE1: Collect Info """
+    process_queue = PHASE1( to_process )
+
+    """  PHASE2: Add task """
+    print
+    postponed_queue = []
+    PHASE2( process_queue, joblist )
+    joblist.addPostponed( postponed_queue )
+    joblist.save()
+    ##for k,v in p_encode.iteritems(): print k,'=',v
+
+"""========================= """
+def initARGV():
     """ LOAD ARGV """
     my.util.prepare_console()
     argv = _mycfg.prepareARGV( sys.argv )[1:]
-    keys, to_process = _mycfg.ParseArgv( argv, optdict={ 'debug':0, 'strict':0} )
-    isDebug, isStrict = keys['debug'], keys['strict']
+    argvkeys, to_process = _mycfg.ParseArgv( argv, optdict={ 'debug':0, 'strict':0} )
+    return argvkeys, to_process
 
-    for n in keys.keys():
+"""========================= """
+def postprocessARGV( argvkeys ):
+    global isDebug, isStrict                        # OUTPUT VALUES
+
+    for n in argvkeys.keys():
         if len(n)>2 and n[0]=='@' and n[-1]=='@':
-            keys.setdefault('@',{})[n] = keys[n]
-            del keys[n]
+            argvkeys.setdefault('@',{})[n] = argvkeys[n]
+            del argvkeys[n]
 
+    isDebug, isStrict = argvkeys['debug'], argvkeys['strict']
     my.util.DEBUG_LEVEL = isDebug
 
-    if isDebug:
-        print "isStrict=%s" % (True if isStrict else False)
-        print "Extra options: %s" % str(keys)
-        print "To process: %s" % str(to_process)
+    return argvkeys
 
+"""=== CONFIG PROCESSING ===="""
+def parseCONFIGS( argvkeys ):
+    global isDebug, isStrict
+    global cfg, mainopts, p_encode, p_detect        # OUTPUT VALUES
 
     """ DESCRIBE CONFIG """
-
     cfg = _mycfg.ConfigLoader( isDebug = isDebug )
     cfg.opt = { 'ENFORCE_BITRATE':  makeint, # If defined and valid, that means "I surely know which video bitrate I'd like to have"
     	    'ENFORCE_PATTERN': splitl,		 # If defined, that means "I know which exactly templates should be used"
@@ -76,7 +111,7 @@ def main():
     cfg.sections = { "":         [ 'dict', False, _mycfg.ConfigLoader.load_opt_processor],        # if no section defined, then expect OPT=VALUE pair
                      "TASK":  	 [ 'dict', True,  _mycfg.ConfigLoader.load_opt_processor],        # [TASK] contain OPT=VALUE pairs
                      "EXTRA_AVS":[ 'str',  True,  _mycfg.ConfigLoader.load_text_processor],       # [EXTRA_AVS] contain plain text
-                     "TEMPLATE": [ 'dict', False, _mycfg.ConfigLoader.load_opt_processor],        # [TEMPLATE] contain OPT=VALUE pairs
+                     "TEMPLATE": [ 'dict', False, _mycfg.ConfigLoader.load_opttmpl_processor],    # [TEMPLATE] contain OPT=VALUE pairs
                      "DETECT":	 [ 'dict', False, _mycfg.ConfigLoader.load_pattern_processor],    # [DETECT] contain NAME => VALUE pattern pair
                      "ENCODE":	 [ 'dict', False, _mycfg.ConfigLoader.load_pattern_processor],    # [ENCODE] contain NAME => VALUE pattern pair
     		}
@@ -150,7 +185,7 @@ def main():
         mainopts['TEMPLATE'] = {}
     mainopts['TEMPLATE'].update( cfg.config['TEMPLATE'][None] )
     DBG_trace("opts before tasks: %s",repr(mainopts))       ##@tsv
-    mainopts['TASK'] = keys.get('TASK', mainopts['TASK'])   # replace TASK from ARGV if given
+    mainopts['TASK'] = argvkeys.get('TASK', mainopts['TASK'])   # replace TASK from ARGV if given
     tasks = filter( len, cfg.get_opt(mainopts, 'TASK') )    # filter splited(on parse) list of tasks
     for t in tasks:
         #if isDebug:
@@ -163,7 +198,7 @@ def main():
             say( "Unknown task '%s'", t )
             if isStrict or  cfg.get_opt( mainopts, 'STRICT' ):
                 exit(1)
-    cfg.replace_opt( mainopts, keys ) # replace from given in ARGV options (they have most priority)
+    cfg.replace_opt( mainopts, argvkeys ) # replace from given in ARGV options (they have most priority)
 
     isStrict = isStrict or cfg.get_opt( mainopts, 'STRICT' )
     mainopts['MATCH_ONLY'] = set( filter( len, cfg.get_opt( mainopts, 'MATCH_ONLY' ) ) )
@@ -175,7 +210,12 @@ def main():
     def apply_pattern( pname, opt, target ):
         if isinstance(opt, dict) and opt:
             say( "Update %s patterns from options: %s" % (pname, ', '.join(opt.keys())) )
-            return target.update( opt )
+            for k,v in opt.iteritems():
+                if v.strip():
+                    target[k] = v
+                elif k in target:
+                    del target[k]
+            return target
 
     cfg.pattern_template['DETECT'] = _mycfg.PatternTemplate( 'DETECT',
     						'{CONTAINER}|VIDEO|{WIDTH}x{HEIGHT}@{FPS}|{V_BRATE} {V_BRATE_TYPE}|{RATIO}={AR_X}:{AR_Y}|{VCODEC}|{VPROFILE}|{VSCAN_TYPE}|{VSCAN_ORDER}'+
@@ -197,6 +237,9 @@ def main():
     if isStrict:
          PreloadEncodingTemplates( p_encode )
 
+def preprocessMEGUI():
+    global mainopts
+
     """ LOAD + REPAIR MEGUI JOBLIST """
     say( "Load joblist" )
     my.megui.megui_path = cfg.get_opt( mainopts, 'MEGUI' ).rstrip("\\/")+"\\"
@@ -214,24 +257,7 @@ def main():
         say( "Store changes of jobs list" )
         joblist.save()
 
-    if len(to_process)==0:
-        print "No source given"
-        exit()
-    for pname in ['TOP','BASIC']:
-        if pname not in p_encode:
-            raise _mycfg.StrictError("No %s encoding pattern defined" % pname)
-
-
-    """ PHASE1: Collect Info """
-    process_queue = PHASE1( to_process )
-
-    """  PHASE2: Add task """
-    print
-    postponed_queue = []
-    PHASE2( process_queue, joblist )
-    joblist.addPostponed( postponed_queue )
-    joblist.save()
-    ##for k,v in p_encode.iteritems(): print k,'=',v
+    return joblist
 
 
 ####################################################################
@@ -507,24 +533,24 @@ def PHASE2_2( detected ):
         finally:
             #sayfunc = say if (isDebug) else DBG_trace
             adj = to_encode_cur.get('adj',None)
-            if adj is not None:
-                ar_joined_pairs = map(lambda a: a[0] if a[1] is None else '='.join(a), adj)
-                adj = "{%s}" % ( ','.join(ar_joined_pairs) )
+            tmpl_name = to_encode_cur.get('pvalue',None)
             DBG_info( "%(token)s:\tValue=%(value)-15s Path: (%(path)s)" % {
                         'token': p_token_name,
                         'path': ' -> '.join(encoder.path),
-                        'value': ( repr(to_encode_cur.get('pvalue',None)) +
-                                   (adj if adj is not None else '') ) }
-                   )
+                        'value': ( repr(tmpl_name) + _mycfg.Encoding.getAdjPrintable(adj) )
+                        }
+                    )
+            tmpl = to_encode_cur.get('tmpl_list',_mycfg.EncTemplate())
+            if len(tmpl.path)>1:
+                DBG_info( "\t\t%s = %s%s" % ( tmpl_name, tmpl.path[-1], _mycfg.Encoding.getAdjPrintable(tmpl.adjustments) ) )
+            if len(tmpl.path)>2:
+                DBG_info( "\t\t(path: %s)" % '->'.join(tmpl.path) )
 
         to_encode[p_token_name] = to_encode_cur
 
     to_print = []
     for p_token_name in cfg.pattern_template['ENCODE'].ar_tokens:
-        adj = to_encode[p_token_name].get('adj','')
-        if adj!='':
-            ar_joined_pairs = map(lambda a: a[0] if a[1] is None else '='.join(a), adj)
-            adj = "{%s}" % ( ','.join(ar_joined_pairs) )
+        adj = _mycfg.Encoding.getAdjPrintable( to_encode[p_token_name].get('adj','') )
         to_print.append( str(to_encode[p_token_name].get('pvalue','')) + adj )
 
     say( "  => ENCODE AS: %s" % '|'.join(to_print) )
@@ -556,6 +582,25 @@ def PHASE2_3( fname, to_encode, info, joblist ):
 
         # update/replace from basekeys
         keys.update(basekeys)
+
+        # resolve all recursive dependencies
+        for _ in range(0,len(keys)+3):
+            detected, failed = {}, {}
+            for k,v in keys.iteritems():
+                if ( isinstance(v,basestring) and len(v)>2 and v[0]=='@' and v[-1]=='@' ):
+                    detected[k]=v
+                    if k!=v and v in keys:
+                        keys[k] = keys[v]
+                    else:
+                        failed[k] = keys[k]
+            if not detected:
+                break
+            if failed:
+                say("Some keys are unresolved: %s", [failed] )
+                break
+        else:
+            failed = map( filter( lambda tup: ( len(tup[1])>2 and tup[1][0]=='@' and tup[1][-1]=='@' ), keys.iteritems() ) )
+            say("Looks like crossdependency in keys. Some keys are unresolved: %s", [failed] )
         return keys
 
     basekeys = { '@SRCPATH@': fname,                            # source file
@@ -563,7 +608,8 @@ def PHASE2_3( fname, to_encode, info, joblist ):
              '@SRCPATH_VIDEO@': fname,                          # intermediary video file
              '@SRCPATH_AUDIO@': fname,                          # intermediary audio file
              '@MEGUI@': my.megui.megui_path,
-             '@BITRATE@': to_encode.get("{BITRATE}",{}).get("pvalue",0)
+             '@BITRATE@': to_encode.get("{BITRATE}",{}).get("pvalue",0),
+             '@CRF@': to_encode.get("{BITRATE}",{}).get("pvalue",0)
     }
     keys = GetKeys(basekeys)
     keys['@{A_DELAY_MS}@'] = "%d" % int(my.util.makefloat(keys['@{A_DELAY_MS}@']))
@@ -626,6 +672,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
         adj = my.util.MyOrderedDict(baseAdjustment)
         adj.update(tmpl.adjustments)
         adj.update(adj_v)
+        DBG_trace("%s",adj)
 
         # 3. prepare adjustments by keys
         for k,v in adj.items():
