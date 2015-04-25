@@ -19,7 +19,7 @@ except: pass
 ADJ_KEYS_SETTER_LOCAL = False           # if False - setter in adjustments ( {@key@=newvalue,..} ) change key value TO THIS AND ALL LATER jobs of this file
                                         # if True  - setter in adjustments ( {@key@=newvalue,..} ) change key value ONLY TO THIS job
 
-isDebug, isStrict = 0, 0                # default values
+isDebug, isStrict, isDry = 0, 0, 0      # default values
 
 ################################
 
@@ -30,7 +30,7 @@ def main():
     argvkeys, to_process = initARGV()
     if argvkeys['help']>0:
         print "Usage:"
-        print "  convertor.py [--debug] [--strict] [--key1=value1] [--key2==value2] [...] DIR_OR_FILE_TO_PROCESS1 [DIR_OR_FILE_TO_PROCESS2 [..]]"
+        print "  convertor.py [--debug] [--strict] [--dry] [--key1=value1] [--key2==value2] [...] DIR_OR_FILE_TO_PROCESS1 [DIR_OR_FILE_TO_PROCESS2 [..]]"
         print "\nExample:"
         print "  convertor.py --strict --TASK=felix+debarrel --INDEX-ONLY=-1 --SUFFIX=new C:\\MY\\VIDEO\\ C:\\MY\\vidfile.mp4"
 
@@ -76,19 +76,19 @@ def initARGV():
     argv = _mycfg.prepareARGV( sys.argv )[1:]
     if '/?' in argv:
         return {'help':1}, []
-    argvkeys, to_process = _mycfg.ParseArgv( argv, optdict={ 'debug':0, 'strict':0, 'help':0} )
+    argvkeys, to_process = _mycfg.ParseArgv( argv, optdict={ 'debug':0, 'strict':0, 'help':0, 'dry':0} )
     return argvkeys, to_process
 
 """========================= """
 def postprocessARGV( argvkeys ):
-    global isDebug, isStrict                        # OUTPUT VALUES
+    global isDebug, isStrict, isDry                        # OUTPUT VALUES
 
     for n in argvkeys.keys():
         if len(n)>2 and n[0]=='@' and n[-1]=='@':
             argvkeys.setdefault('@',{})[n] = argvkeys[n]
             del argvkeys[n]
 
-    isDebug, isStrict = argvkeys['debug'], argvkeys['strict']
+    isDebug, isStrict, isDry = argvkeys['debug'], argvkeys['strict'], argvkeys['dry']
     my.util.DEBUG_LEVEL = isDebug
 
     return argvkeys
@@ -579,7 +579,8 @@ def PHASE2_2( detected ):
         adj = _mycfg.Encoding.getAdjPrintable( to_encode[p_token_name].get('adj','') )
         to_print.append( str(to_encode[p_token_name].get('pvalue','')) + adj )
 
-    say( "  => ENCODE AS: %s" % '|'.join(to_print) )
+    jobtype = 'ENCODE AS' if not isDry else "DRY RUN"
+    say( "  => %s: %s" % ( jobtype, '|'.join(to_print) ) )
 
     return to_encode
 
@@ -787,9 +788,12 @@ def PHASE2_3( fname, to_encode, info, joblist ):
     def AddJobs( content, **kww ):
         kww.setdefault('required',[])
         for c in content:
-            jobname = joblist.addJobXML( c, **kww )
-            DBG_info("..add %s",jobname ) #@tsv
-            kww['required'] = [jobname]
+            if isDry:
+                DBG_trace("..job skipped - dry run" )
+            else:
+                jobname = joblist.addJobXML( c, **kww )
+                DBG_info("..add %s",jobname ) #@tsv
+                kww['required'] = [jobname]
         return kww['required']
 
 
@@ -812,8 +816,11 @@ def PHASE2_3( fname, to_encode, info, joblist ):
         for idx in range(0,len(content)):
             avsfname = fname + (('.%d'%idx+1) if idx>0 else '' ) + '.avs'
             ##print my.util.str_encode(content[idx],'cp866')
-            with codecs.open(avsfname,'wb',my.util.baseencode) as f:
-                f.write( content[idx])
+            if isDry:
+                DBG_trace("dry run - avs creation skipped")
+            else:
+                with codecs.open(avsfname,'wb',my.util.baseencode) as f:
+                    f.write( content[idx])
 
     to_del = []
 
