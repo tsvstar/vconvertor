@@ -300,9 +300,9 @@ class PsuedoMultiThread(object):
         self.finalize_tasks()
 
     def add_task( self, value ):
-        DBG_trace( "add_task(%s)", value )
+        DBG_trace( "add_task(%s)", [value] )
         cmd = self.processorObj.add( value )
-        DBG_trace("cmd=%s", cmd)
+        DBG_trace("cmd=%s", [cmd])
         if cmd is None:
             return
 

@@ -61,7 +61,7 @@ def prepareARGV( argv ):
     scriptpath = argv[0].replace('\\\\','\\') + '"'
     cmd = cmd.split(scriptpath,1)[1]    # cut off [python, mainscript]
     cmd = util.str_decode(cmd)
-    DBG_trace("COMMAND_LINE = %s", cmd)
+    DBG_trace("COMMAND_LINE = %s", [cmd])
 
     argv = [ argv[0] ]
     quoteFlag = False
