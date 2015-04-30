@@ -1,8 +1,97 @@
 ========  TOTEST ===============
 ? strip() for adjustments
 * add sonymts patterns
+# --dry_run, --dry
 
 ========  TODO ===============
+
+**!!! UNABLE TO CONVERT AUDIO FROM SRC -- MAYBE __dga will help
+
+[Error] Log for job0023 (audio, 00021_22.mts -> 00021_22.mts.tmp.mp4)
+-[Information] [30.04.2015 17:31:41] Started handling job
+-[Information] [30.04.2015 17:31:41] Preprocessing
+-[Information] [30.04.2015 17:31:41] MediaInfo
+--[Information] [30.04.2015 17:31:41] File: C:\Documents and Settings\taranenko\YandexDisk\to_copy\00021_22.mts
+--[Information] General
+---[Information] Format: MPEG-TS
+---[Information] FormatString: MPEG-TS
+---[Information] FileSize: 246419496
+---[Information] PlayTime: 00:01:12.497
+--[Information] Video
+---[Information] ID: 256
+---[Information] StreamOrder: 0-0
+---[Information] Width: 1920
+---[Information] Height: 1080
+---[Information] FrameCount: 4346
+---[Information] FrameRate: 59.940
+---[Information] FrameRateOriginal: 
+---[Information] FrameRateMode: 
+---[Information] ScanType: Progressive
+---[Information] Codec: AVC
+---[Information] CodecString: AVC
+---[Information] Bits Depth: 8
+---[Information] Format: AVC
+---[Information] AspectRatio: 1.778
+---[Information] AspectRatioString: 16:9
+---[Information] Delay: 20.678
+---[Information] Title: 
+---[Information] Language: 
+---[Information] LanguageString: 
+---[Information] Default: 
+---[Information] DefaultString: 
+---[Information] Forced: 
+---[Information] ForcedString: 
+--[Information] Audio
+---[Information] ID: 257
+---[Information] StreamOrder: 0-1
+---[Information] Format: AC-3
+---[Information] FormatProfile: 
+---[Information] FormatSettingsSBR: 
+---[Information] FormatSettingsPS: 
+---[Information] SamplingRate: 48000
+---[Information] SamplingRateString: 48.0 KHz
+---[Information] Channels: 2
+---[Information] ChannelsString: 2 channels
+---[Information] ChannelPositionsString2: 2/0/0
+---[Information] BitRateMode: CBR
+---[Information] Delay: 468.678
+---[Information] Title: 
+---[Information] Language: 
+---[Information] LanguageString: 
+---[Information] Default: 
+---[Information] DefaultString: 
+---[Information] Forced: 
+---[Information] ForcedString: 
+-[Information] [30.04.2015 17:31:42] Trying to open the file with NicAudio
+-[Information] [30.04.2015 17:31:42] Failed opening the file with NicAudio()
+-[Information] [30.04.2015 17:31:42] Trying to open the file with BassAudioSource()
+-[Information] [30.04.2015 17:31:42] Failed opening the file with BassAudioSource(). bassAudioSource: File could not be opened!
+-[Information] [30.04.2015 17:31:42] Trying to open the file with FFAudioSource()
+-[Information] [30.04.2015 17:31:42] Successfully opened the file with FFAudioSource()
+-[Information] [30.04.2015 17:31:43] Avisynth script
+--[NoImage] ClearAutoloadDirs()
+--[NoImage] AddAutoloadDir("C:\MY\MeGUI_2525_x86\tools\avs\plugins")
+--[NoImage] LoadPlugin("C:\MY\MeGUI_2525_x86\tools\ffms\ffms2.dll")
+--[NoImage] FFAudioSource("C:\Documents and Settings\taranenko\YandexDisk\to_copy\00021_22.mts")
+--[NoImage] # detected channels: 2 channels
+--[NoImage] # detected channel positions: 2/0/0
+--[NoImage] return last
+-[Information] [30.04.2015 17:31:43] Commandline used: -ignorelength -br 125000 -if - -of "{0}"
+-[Information] [30.04.2015 17:31:43] Avisynth script environment opened
+-[Information] [30.04.2015 17:31:43] Script loaded
+-[Information] [30.04.2015 17:31:43] Output Decoder
+--[Information] [30.04.2015 17:31:43] Channels: 2
+--[Information] [30.04.2015 17:31:43] Bits per sample: 32
+--[Information] [30.04.2015 17:31:43] Sample rate: 48000
+-[Information] [30.04.2015 17:31:43] Job commandline: C:\MY\MeGUI_2525_x86\tools\eac3to\neroAacEnc.exe -ignorelength -br 125000 -if - -of "C:\Documents and Settings\taranenko\YandexDisk\to_copy\00021_22.mts.tmp.mp4"
+-[Information] [30.04.2015 17:31:43] Process started
+-[Information] [30.04.2015 17:31:43] Standard output stream
+-[Information] [30.04.2015 17:31:43] Standard error stream
+-[Error] [30.04.2015 17:31:47] An error occurred: FFAudioSource: Seeking is severely broken
+-[Information] [30.04.2015 17:31:47] Job completed
+
+
+:
 
 * process path/to/files/grep_pattern
 
@@ -92,4 +181,5 @@ adjustment -- give path in XML to fix (  DAR:AR=@{RATIO}@|DAR:X=@{AR_X}@|DAR:Y=@
 
 
 [CANCEL] cached config(using pickle?) -- for performance. looks like it fast enough anyway
+
 
