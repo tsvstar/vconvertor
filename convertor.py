@@ -35,8 +35,9 @@ def main():
         print "  convertor.py --strict --TASK=felix+debarrel --INDEX-ONLY=-1 --SUFFIX=new C:\\MY\\VIDEO\\ C:\\MY\\vidfile.mp4"
 
         initCONFIGS()
+        print "\nAvailable OPTIONS:   %s" % ', '.join( sorted( cfg.opt.keys() ) )
         LoadBaseCONFIGFiles()
-        print "\nAvailable TASK:      %s" % ', '.join( sorted( cfg.config.get('TASK',{}).keys() ) )
+        print "Available TASK:      %s" % ', '.join( sorted( cfg.config.get('TASK',{}).keys() ) )
         print "Available EXTRA_AVS: %s" % ', '.join( sorted( cfg.config.get('EXTRA_AVS',{}).keys() ) )
         exit()
 
@@ -109,7 +110,7 @@ def initCONFIGS():
     	    'AVS_OVERWRITE': makebool,     	# Should .AVS be overwrited
     	    'INDEX_ONLY':    makeint,		# Should only AVS+index job be created[ 0=regular convert, 1=only index job, -1=first all index than all convert]
     	    'KEEP_TMP':      makebool,     	# Should do not remove intermediary files
-    	    '@':             lambda s: s,  	# @{KEY} = value -- set the KEY to use it later in jobs as @KEY@
+    	    '@':             vstrip,  	    # @{KEY} = value -- set the KEY to use it later in jobs as @KEY@
     	    'EXTRA_AVS':     splitl,    	# if not empty, then add to .AVS file correspondend [EXTRA_AVS=xxx] section. Could be several: extra1+extra2+...
     	    'SUFFIX':	     vstrip,		# suffix for template (if defined will try to use 'name.suffix' template first; '.old' )
 
@@ -346,7 +347,7 @@ Audio;|AUDIO|%Channel(s)%|%Codec%|%Codec/String%|%BitRate/String%|%Alignment%|%D
                                     verbose = ( 3 if isDebug else 2 ) )
 
     process_queue = []
-    with my.util.PsuedoMultiThread( processor, max_t=1, shell=processor.shell ) as worker:
+    with my.util.PsuedoMultiThread( processor, max_t=2, shell=processor.shell ) as worker:
       for fname in to_process:
         if not os.path.exists(fname) and fname[-1]=='"': # " at the end could means just that this was finished with \\
             fname = fname[:-1]
@@ -579,7 +580,10 @@ def PHASE2_2( detected ):
         adj = _mycfg.Encoding.getAdjPrintable( to_encode[p_token_name].get('adj','') )
         to_print.append( str(to_encode[p_token_name].get('pvalue','')) + adj )
 
-    jobtype = 'ENCODE AS' if not isDry else "DRY RUN"
+    if isDry:
+        jobtype = "DRY RUN"
+    else:
+        jobtype = 'ENCODE AS' if cfg.get_opt( mainopts, 'BITRATE' ) else "MAKE INDEX FOR"
     say( "  => %s: %s" % ( jobtype, '|'.join(to_print) ) )
 
     return to_encode
@@ -635,6 +639,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
              '@SRCPATH_VIDEO@': fname,                          # intermediary video file
              '@SRCPATH_AUDIO@': fname,                          # intermediary audio file
              '@MEGUI@': my.megui.megui_path,
+             '@SUFFIX@': cfg.get_opt(mainopts,'SUFFIX'),
              '@BITRATE@': to_encode.get("{BITRATE}",{}).get("pvalue",0),
              '@CRF@': to_encode.get("{BITRATE}",{}).get("pvalue",0)
     }

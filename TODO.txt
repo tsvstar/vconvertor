@@ -7,6 +7,11 @@
 * process path/to/files/grep_pattern
 
 * move configs to "./cfg", log and cache to "./log" [?]
+					+ store log of command string (unique only? or maybe with timestamp)
+* write not "enforced encoding as" but "..with" if +pattern
+* AVS_SUFFIX (both to AVS creation and to output) - several output
+* not just skip AVS creation if exists - but if it different - skip whole job [or ask?]
+  + at least do not say about skipping (only to log - that content is the same)
 
 *  parse videobrate / ({<float}, {>float}, {>=float, <=float},
 *  better pattern config parsing (re.compile("^[A-Za-z_:0-9] *@?[=>]")
