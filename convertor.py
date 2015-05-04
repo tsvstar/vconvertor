@@ -110,7 +110,7 @@ def initCONFIGS():
     	    'AVS_OVERWRITE': makebool,     	# Should .AVS be overwrited
     	    'INDEX_ONLY':    makeint,		# Should only AVS+index job be created[ 0=regular convert, 1=only index job, -1=first all index than all convert]
     	    'KEEP_TMP':      makebool,     	# Should do not remove intermediary files
-    	    '@':             vstrip,  	    # @{KEY} = value -- set the KEY to use it later in jobs as @KEY@
+    	    '@':             lambda s: s,  	# @{KEY} = value -- set the KEY to use it later in jobs as @KEY@
     	    'EXTRA_AVS':     splitl,    	# if not empty, then add to .AVS file correspondend [EXTRA_AVS=xxx] section. Could be several: extra1+extra2+...
     	    'SUFFIX':	     vstrip,		# suffix for template (if defined will try to use 'name.suffix' template first; '.old' )
 
