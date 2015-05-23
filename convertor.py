@@ -364,7 +364,7 @@ Audio;|AUDIO|%Channel(s)%|%Codec%|%Codec/String%|%BitRate/String%|%Alignment%|%D
             if isStrict:
                 raise _mycfg.StrictError()
 
-      for fname in processor.processed:
+    for fname in processor.processed:
         process_queue.append( [ fname, cacheObj.get(fname,check=False) ] )
     return process_queue
 
@@ -683,8 +683,9 @@ def PHASE2_3( fname, to_encode, info, joblist ):
     #   baseAdjustment - dict with default values of an adjustments (so we able to have default modification for any job)
     #   xml       - if True, then loaded content will be translated to xmltree and adj applied
     #   allowEmpty - if False then check and raise error if no valid content given
-    re_key = re.compile("@[A-Za-z0-9{}_]@")
-    def getEncodeTokens( tokenname, baseAdjustment={}, xml = False, allowEmpty = False ):
+    #   contentPrepareHandler - if not None, then it process given content list in specific manner [used for TEMPLATE_AVS]
+    re_key = re.compile("@[A-Za-z0-9{}_]+@")
+    def getEncodeTokens( tokenname, baseAdjustment={}, xml = False, allowEmpty = False, contentPrepareHandler = None ):
         d = to_encode.get( tokenname, {})
         # 1. get values
         detect_pname = d.get('pname','')                    # name of pattern for detection
@@ -739,7 +740,11 @@ def PHASE2_3( fname, to_encode, info, joblist ):
                 del adj[k]
         ##DBG_info("@tsv adj = %s", str(adj))
 
-        # 5. prepare content by keys
+        # 5. Prepare content if needed
+        if callable( contentPrepareHandler ):
+            contentPrepareHandler( content = content, keys_local = keys_local, opts = optscopy )
+
+        # 6. prepare content by keys
         for idx in range(0,len(content)):
             for src, dst in keys_local.iteritems():
                 ##if src.startswith("@SRCPATH_"):
@@ -749,18 +754,21 @@ def PHASE2_3( fname, to_encode, info, joblist ):
                     dst = dst(keys_local,optscopy)
                 content[idx] = content[idx].replace(src,str(dst))
 
-        # 6. detect if any @KEY@ still left undefined
+        # 7. detect if any @KEY@ still left undefined
+        ##DBG_trace2("Check for undefined keys:")
+        ##DBG_trace2("%s", [adj.values])
         for v in adj.itervalues():
             m = re_key.search(v)
             if m:
                 raise _mycfg.StrictError( "For adjustment for pattern '%s/%s' found undefined key %s" % (detect_pname,tokenname, m.group(0)) )
         for idx in range(0,len(content)):
+            ##DBG_trace2("content[%s] = %s", [idx, content[idx]])
             m = re_key.search(content[idx])
             if m:
                 suf = '.%dpass'%(idx+1) if idx else ''
                 raise _mycfg.StrictError( "At template '%s%s' for pattern '%s/%s' found undefined key %s" % (encode_tname,suf,detect_pname,tokenname, m.group(0)) )
 
-        # 7. convert to xml tree and process it
+        # 8. convert to xml tree and process it
         if xml:
             for idx in range(0, len(content)):
                 suf = '.%dpass'%(idx+1) if idx else ''
@@ -804,11 +812,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
 
     # PROCESS {AVS_TEMPLATE}
     avsfname = fname + '.avs'
-    detect_pname, encode_tname, content, opts  = getEncodeTokens( '{AVS_TEMPLATE}' )
-
-    if os.path.isfile(avsfname) and not cfg.get_opt( opts, 'AVS_OVERWRITE' ):
-        say( "%s exists - do not overwrite", os.path.basename(avsfname) )
-    else:
+    def PrepareExtraAvs( content, keys_local, opts ):
         #find non empty AVS names
         extra_avs_sections = filter( len, cfg.get_opt( opts, 'EXTRA_AVS' ) )
         #collect their contents
@@ -816,10 +820,18 @@ def PHASE2_3( fname, to_encode, info, joblist ):
                                                                       (''.join(cfg.config['EXTRA_AVS'].get(section,[]))).strip() ),
                                   extra_avs_sections )
         #add to all passes
-        content = map(lambda basecontent: u'\n'.join([basecontent.strip()]+extra_avs_contents), content )
+        ##content = map(lambda basecontent: u'\n'.join([basecontent.strip()]+extra_avs_contents), content )
+        for idx in range(0, len(content)):
+            content[idx] = u'\n'.join([content[idx].strip()]+extra_avs_contents)
 
+    detect_pname, encode_tname, content, opts  = getEncodeTokens( '{AVS_TEMPLATE}', contentPrepareHandler =  PrepareExtraAvs )
+
+    if os.path.isfile(avsfname) and not cfg.get_opt( opts, 'AVS_OVERWRITE' ):
+        say( "%s exists - do not overwrite", os.path.basename(avsfname) )
+    else:
         for idx in range(0,len(content)):
             avsfname = fname + (('.%d'%idx+1) if idx>0 else '' ) + '.avs'
+
             ##print my.util.str_encode(content[idx],'cp866')
             if isDry:
                 DBG_trace("dry run - avs creation skipped")

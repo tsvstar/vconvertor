@@ -1,0 +1,82 @@
+Video convertor make batch conversion for multiple files or directories.
+  1. Scan given directories and select matched to FILES_ONLY patterns.
+  2. For this videofiles mediainfo is extracted and found correspondent by [DETECT] / RESOLVE{} patterns.
+     Pattern is set of condition which determine kind of video by given values. It is possible to match several contents to the same video,
+     but this patterns should not have collision in encoding descriptions.
+  3. Than convertor find how to execute each job in sequence for this kind of video and add them to MEGUI.
+
+
+Useful tips:
+ - If MEGUI was ran during execution of vconvertor, then it will ignore created by it jobs. 
+   To fix that, close MEGUI, run vconvertor without parameters and run MEGUI again
+
+ - You can check how video will be processed before actually produce jobs by giving --dry flag
+   More information why this happens is written to convertor.log file. If even more details needed, please add --debug flag
+
+ - Any config value could be overriden by user by giving as argument of command ( --OPTION=value )
+
+ - INDEX_ONLY config value could be used for following scenarios:
+    * INDEX_ONLY = 0  - regular convertion
+    * INDEX_ONLY = 1  - create only .avs files and index job. To quickly prepare video to adjust .avs files (for example crop)
+    * INDEX_ONLY = -1 - same scenario, but creates encoding job too (and place all of them to the end for easy postpone)
+
+ - It is possible to modify encoding sequence using following tools:
+   * TASK - you may declare named TASK section and determine any set of config options there.
+     Then just give list of this options as --TASK=task1+task2+... and they will be applied to modify behavior.
+     Usually this could be used to processing your regular scenario: dark video, different kind of wedding video, etc.
+
+   * SUFFIX - if given, vconvertor try to use "pattern.SUFFIX" encoding pattern first for each kind of encoding job.
+     So different patterns of video will be processed in different way and at same time in different from regular case manner.
+
+   * Multiple options which directly affect to processing and could be overided in tasks or in parameters:
+     BITRATE           - if no bitrate given at any matched pattern, then this will be default value
+     ENFORCE_BITRATE   - if this not empty and positive integer value, than any bitrate values from encoding pattern will be overriden by this
+     ENFORCE_PATTERN   - ignore detection and directly determine how to encode all videos
+     DETECT{pattern}   - replace defined in [DETECT] section detection pattern "pattern"
+     ENCODE{pattern}   - replace defined in [ENCODE] section encoding pattern "pattern"
+     TEMPLATE{pattern} - replace defined in [TEMPLATE] section modification of encoding pattern "pattern"
+  
+
+Examples how to run vconvertor:
+
+  - Check how will be convert everything recursively in given folder using CRF encoding with default CRF=20
+	convertor.py --SUFFIX=crf --BITRATE=20 --RECURSIVE=True --debug C:\VIDEO\2015\
+
+  - Run convertion of dark videos which come from phone
+	convertor.py --TASK=g4s+hdr C:\VIDEO\2015\PHONE\
+
+
+How to make detect pattern: [TODO]
+How to make encoding pattern: [TODO]
+Variables [TODO]
+Templates [TODO]
+Custom function [TODO]
+Using variables and config options in adjustment [TODO]
+
+
+Details how to work processing:
+   - Each encoding sequence consists of 6 values( 1 value + 5 phases):
+	* {BITRATE}        - value of bitrate (or CRF). non-empty is positive integer
+	* {AVS_TEMPLATE}   - template to create .avs file (all requested in EXTRA_AVS+=avs1|avs2|.. sections are added)
+	* {INDEX_JOB}	   - how to index this file
+	* {VIDEO_PASS}	   - 
+	* {AUDIO_ENCODE}
+	* {MUX_JOB}
+
+   - Vconvertor scan each value from most narrow pattern up to most wide until found non-empty value. This value will be used for this phase.
+     Non-empty value for BITRATE is positive integer, for other values is anything except '?'
+     IMPORTANT: Each phase resolving have to produce non-empty result. If several patterns match to video, only one of them have to produce non-empty value for each value.
+
+     Order of iteration is: pattern_w_suffix -> pattern_wo_suffix - > wider_patter_w_suffix -> wider_pattern_wo_suffix.
+     Order of widening is:  pattern -> without_last_section -> ... -> BASIC -> TOP
+     So for "sony:720.suf" we will iterate in following sequence: sony:720.suf -> sony:720 -> sony.suf -> sony -> BASIC.suf -> BASIC -> TOP.suf -> TOP
+
+   - You can define empty value but non-empty adjustment. ( ?{adjname=ajvalue} ). In this case adjustment of most narrow pattern will be used if will match first
+?????? ISN'T IT
+
+   - {VIDEO_PASS} and {AUDIO_ENCODE} could be empty string. That means "use this kind of stream from source video"
+
+   - Multipass [TODO]
+
+
+Example: [TODO]

@@ -4,13 +4,14 @@
 # --dry_run, --dry
 **!!! UNABLE TO CONVERT AUDIO FROM SRC -- MAYBE __dga will help [Error] Log for job0023 (audio, 00021_22.mts -> 00021_22.mts.tmp.mp4)
 
-========  TODO ===============
+========  IMPORTANT ===============
 
-WHEN I GIVE "vconvertor 00021_22.mts --dry" FIRST TIME - IT DOESN'T GIVE ANY OUTPUT
 * @FILE_SUFFIX@ /from option - to make several jobs at time change .avs
 * suffix could be compund [separated be '.'] (and so this could also give an option to make several jobs at time )
-* WHY DO NOT CATCH UNFINISHED @XXX@ (??)
 
+========  TODO ===============
+
+* run-time pattern deletion (by giving empty value)
 * process path/to/files/grep_pattern
 
 * move configs to "./cfg", log and cache to "./log" [?]
@@ -65,6 +66,10 @@ WHEN I GIVE "vconvertor 00021_22.mts --dry" FIRST TIME - IT DOESN'T GIVE ANY OUT
 
 
 ========  DONE ===============
+
+* When run vconvertor on uncached yet media they are not processed and need re-run convertor
+* Do not process kes in EXTRA_AVS (leave @MEGUI@ for TASK=hdr)
+* Do not catch situation that unprocessed @XXX@ keys are left
 
 * Usage: convertor.py [--debug] [--strict] [--key1=value1] [--key2==value2] [...] DIRECTORY_OR_FILE_TO_PROCESS1 [DIRECTORY_OR_FILE_TO_PROCESS2 [..]]
 

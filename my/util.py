@@ -514,7 +514,7 @@ class CachedProcessor(object):
 
     def handle( self, fname, value ):
         value = value.rstrip('\n\r')
-        DBG_trace( "CachedProcessor.handle%s\n%s\n", (fname,value) )
+        DBG_trace( "CachedProcessor.handle(%s)\n%s\n", (fname,value) )
         if self.validate( value ):
             self.cacheObj.update( fname, value )
             self.processed.append( fname )
