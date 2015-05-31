@@ -239,9 +239,30 @@ def parseCONFIGS( argvkeys ):
             say( "Update %s patterns from options: %s" % (pname, ', '.join(opt.keys())) )
             for k,v in opt.iteritems():
                 if v.strip():
-                    target[k] = v
+                    # if value exists,
+                    vsrc = map(str.strip, v.split('|') )
+
+                    # .. and no '*' parts there, then this is full pattern. replace using it.
+                    if '*' not in vsrc:
+                        DBG_info( "REPLACE %s{%s}: was:'%s' -> new:'%s'", [pname,k, target.get(k,''),v] )
+                        target[k] = v
+                        continue
+
+                    # .. and '*' parts exists, then replace only given non-* parts
+                    vtgt = map(str.strip, target.get(k,'-1').split('|') )
+                    vnew = list( vtgt )
+                    while len(vnew)<len(vsrc):
+                        vnew.append('?')
+                    for idx in xrange(0,len(vsrc)):
+                        if vsrc[idx]!='*':
+                            vnew[idx] = vsrc[idx]
+                    vnew = '|'.join(vnew)
+                    DBG_info( "UPDATE %s{%s}: was:'%s' + new:'%s' -> result:'%s'", [pname,k,target.get(k,''),v,vnew] )
+                    target[k] = vnew
                 elif k in target:
+                    # if empty value given to replace, means delete pattern
                     del target[k]
+                    DBG_info( "DELETE %s{%s}: was:'%s'", [pname,k, target.get(k,'')] )
             return target
 
     cfg.pattern_template['DETECT'] = _mycfg.PatternTemplate( 'DETECT',
@@ -576,8 +597,22 @@ def PHASE2_2( detected ):
         to_encode[p_token_name] = to_encode_cur
 
     to_print = []
+    extraavs = filter(len, cfg.get_opt( mainopts, 'EXTRA_AVS' ) )
     for p_token_name in cfg.pattern_template['ENCODE'].ar_tokens:
-        adj = _mycfg.Encoding.getAdjPrintable( to_encode[p_token_name].get('adj','') )
+        local_adj = to_encode[p_token_name].get('adj','')
+
+        # prepare printable version of EXTRA_AVS if such given
+        if extraavs and p_token_name=='{AVS_TEMPLATE}':
+            for idx in range( 0, len(local_adj) ):
+                if len(local_adj) and local_adj[idx][0]=='%EXTRA_AVS%':
+                    local_adj[idx][1] = '+'.join( [ local_adj[idx][1] ] + extra )
+                    break
+            else:
+                if local_adj=='':
+                    local_adj=[]
+                local_adj.append( [ '%EXTRA_AVS%', '+'.join( extra ) ] )
+
+        adj = _mycfg.Encoding.getAdjPrintable( local_adj )
         to_print.append( str(to_encode[p_token_name].get('pvalue','')) + adj )
 
     if isDry:
