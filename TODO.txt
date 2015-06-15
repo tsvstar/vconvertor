@@ -14,6 +14,9 @@
 * run-time pattern deletion (by giving empty value)
 * process path/to/files/grep_pattern
 
+* [maybe] load config from pyfile directory
+* output suffix (what to add as the suffix to the name of output file) 
+
 * move configs to "./cfg", log and cache to "./log" [?]
 					+ store log of command string (unique only? or maybe with timestamp)
 * write not "enforced encoding as" but "..with" if +pattern
@@ -66,6 +69,8 @@
 
 
 ========  DONE ===============
+
+* add all extra avs to the *.avs file name (and so we can have any combination of them)
 
 * When run vconvertor on uncached yet media they are not processed and need re-run convertor
 * Do not process kes in EXTRA_AVS (leave @MEGUI@ for TASK=hdr)

@@ -266,7 +266,7 @@ def parseCONFIGS( argvkeys ):
             return target
 
     cfg.pattern_template['DETECT'] = _mycfg.PatternTemplate( 'DETECT',
-    						'{CONTAINER}|VIDEO|{WIDTH}x{HEIGHT}@{FPS}|{V_BRATE} {V_BRATE_TYPE}|{RATIO}={AR_X}:{AR_Y}|{VCODEC}|{VPROFILE}|{VSCAN_TYPE}|{VSCAN_ORDER}'+
+    						'{CONTAINER}|VIDEO|{WIDTH}x{HEIGHT}@{FPS}|{V_BRATE} {?V_BRATE_TYPE}|{RATIO}={AR_X}:{AR_Y}|{VCODEC}|{VPROFILE}|{VSCAN_TYPE}|{VSCAN_ORDER}'+
     						'|AUDIO|{A_CHANNEL}|{A_CODEC}|{A_CODEC2}|{A_BRATE}|{A_ALIGNMENT}|{A_DELAY_MS}')
     cfg.pattern_template['ENCODE'] = _mycfg.PatternTemplate( 'ENCODE', '{BITRATE}|{AVS_TEMPLATE}|{INDEX_JOB}|{VIDEO_PASS}|{AUDIO_ENCODE}|{MUX_JOB}' )
     apply_pattern( 'DETECT', mainopts.get('DETECT',None), cfg.config['DETECT'][None] )        # copy from opts
@@ -605,12 +605,12 @@ def PHASE2_2( detected ):
         if extraavs and p_token_name=='{AVS_TEMPLATE}':
             for idx in range( 0, len(local_adj) ):
                 if len(local_adj) and local_adj[idx][0]=='%EXTRA_AVS%':
-                    local_adj[idx][1] = '+'.join( [ local_adj[idx][1] ] + extra )
+                    local_adj[idx][1] = '+'.join( [ local_adj[idx][1] ] + extraavs )
                     break
             else:
                 if local_adj=='':
                     local_adj=[]
-                local_adj.append( [ '%EXTRA_AVS%', '+'.join( extra ) ] )
+                local_adj.append( [ '%EXTRA_AVS%', '+'.join( extraavs ) ] )
 
         adj = _mycfg.Encoding.getAdjPrintable( local_adj )
         to_print.append( str(to_encode[p_token_name].get('pvalue','')) + adj )
@@ -846,10 +846,12 @@ def PHASE2_3( fname, to_encode, info, joblist ):
 
 
     # PROCESS {AVS_TEMPLATE}
-    avsfname = fname + '.avs'
+    global extra_avs_sections_glob
+    extra_avs_sections_glob = []
     def PrepareExtraAvs( content, keys_local, opts ):
         #find non empty AVS names
         extra_avs_sections = filter( len, cfg.get_opt( opts, 'EXTRA_AVS' ) )
+        globals()['extra_avs_sections_glob'] += extra_avs_sections
         #collect their contents
         extra_avs_contents = map( lambda section: u"\n#EXTRA:%s\n%s"%( section,
                                                                       (''.join(cfg.config['EXTRA_AVS'].get(section,[]))).strip() ),
@@ -860,18 +862,20 @@ def PHASE2_3( fname, to_encode, info, joblist ):
             content[idx] = u'\n'.join([content[idx].strip()]+extra_avs_contents)
 
     detect_pname, encode_tname, content, opts  = getEncodeTokens( '{AVS_TEMPLATE}', contentPrepareHandler =  PrepareExtraAvs )
+    avsfname = '%s%s.avs' % ( fname, '.%s' % '+'.join(extra_avs_sections_glob) if extra_avs_sections_glob else '' )
 
     if os.path.isfile(avsfname) and not cfg.get_opt( opts, 'AVS_OVERWRITE' ):
         say( "%s exists - do not overwrite", os.path.basename(avsfname) )
     else:
         for idx in range(0,len(content)):
-            avsfname = fname + (('.%d'%idx+1) if idx>0 else '' ) + '.avs'
+            avsfname_full = avsfname[:-4] + (('.%d'%idx+1) if idx>0 else '' ) + '.avs'
 
             ##print my.util.str_encode(content[idx],'cp866')
             if isDry:
-                DBG_trace("dry run - avs creation skipped")
+                DBG_trace("dry run - avs '%s' creation skipped", avsfname_full )
             else:
-                with codecs.open(avsfname,'wb',my.util.baseencode) as f:
+                DBG_trace("AVS '%s' created", avsfname_full )
+                with codecs.open(avsfname_full,'wb',my.util.baseencode) as f:
                     f.write( content[idx])
 
     to_del = []

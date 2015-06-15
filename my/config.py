@@ -582,7 +582,11 @@ class PatternTemplate(object):
     #   template - name of parsed token
     def __init__( self, section, template ):
         self.section = section
-        self.ar_sep, self.ar_tokens = self._compile_pattern_template(template)
+        self.ar_sep, self.ar_tokens, self.ar_optional = self._compile_pattern_template(template)
+        DBG_trace2("section %s", section )
+        DBG_trace2("ar_sep %s", [self.ar_sep] )
+        DBG_trace2("ar_tokens %s", [self.ar_tokens] )
+        DBG_trace2("ar_optional %s", [self.ar_optional] )
 
     # auxilary: cut value till sep
     # RETURN VALUE: [ 0value, 1string_after_value, 2pos_where_value_found ]
@@ -602,16 +606,20 @@ class PatternTemplate(object):
     # RETURN VALUE: [ list_of_separators, list_of_tokennames]
     @staticmethod
     def _compile_pattern_template( template ):
-        token = re.compile("\{[A-Za-z0-9_]+\}")
+        token = re.compile("\{\??[A-Za-z0-9_]+\}")
 
         #sanity check - are separators exists between all tokens?
         ar_sep = token.split( template )
         ar_tokens = token.findall( template )
+        ar_optional = set()
         for idx in range( 1, max( len(ar_tokens), len(ar_sep)-1 ) ):
             if ar_sep[idx]=='':
                 raise Exception("Malformed template given: no separator before %s token" % ar_tokens[idx])
+            if ar_tokens[idx].startswith('{?'):
+                ar_tokens[idx] = '{%s' % ar_tokens[idx][2:]
+                ar_optional.add(idx)
 
-        return ar_sep, ar_tokens
+        return ar_sep, ar_tokens,ar_optional
 
     # auxilary: DEBUG???
     @staticmethod
@@ -628,9 +636,10 @@ class PatternTemplate(object):
             config      - string to parse
             strictError - if True, then raise exception on error
             silent      - if True, do not produce any message
+            allowOptional - if True, then optional tokens could be missed in input string
 
     """
-    def parse_pattern( self, config, strictError = False, silent = False ):
+    def parse_pattern( self, config, strictError = False, silent = False, allowOptional = True ):
 
         # parse pattern
         parsed = {}
@@ -650,8 +659,32 @@ class PatternTemplate(object):
 
                 # parse tokens
                 DBG_trace( "  pname=%s, STR=%s", [ pname, config[pname] ] )
+                skip = set()
                 for idx in range(0,len(self.ar_tokens)):
-                    value, s, foundat = self._check_sep( self.ar_sep[idx+1], s )
+                    if idx in skip:
+                        value = ''
+                        DBG_trace2( "    SKIP_OPTIONAL")
+                    else:
+                        value, s_new, foundat = self._check_sep( self.ar_sep[idx+1], s )
+
+                        # check next tokens for next optionality. if yes and found separator after it earlier then current, then  - skip such
+                        if allowOptional:
+                            idx1 = idx+1
+                            if idx1 in self.ar_optional:
+                                DBG_trace2( "    CHECK_OPTIONALITY AFTER: ... SEP=%s; VALUE=%s; S=%s; FOUND=%d; TO=%s", ( self.ar_sep[idx+1], value,s_new,foundat,self.ar_tokens[idx]) )
+                            while idx1<len(self.ar_tokens):
+                                if idx1 not in self.ar_optional:
+                                    break
+                                value1, s_new1, foundat1 = self._check_sep( self.ar_sep[idx1+1], s )
+                                DBG_trace2( "    CHECK_OPTIONAL: %s... SEP=%s; VALUE=%s; S=%s; FOUND=%d; TO=%s", ( (idx1-idx),self.ar_sep[idx1+1], value1,s_new1,foundat1,self.ar_tokens[idx1]) )
+                                if foundat1>=0 and foundat1<foundat:
+                                    for x in range(idx+1,idx1+1): skip.add(x)
+                                    value, s_new, foundat = value1, s_new1, foundat1
+                                    DBG_trace2( "    MATCH_OPTIONAL %s", [skip])
+                                idx1 += 1
+
+                        s = s_new
+
                     if value in ['*','?']:
                         value = None
                     DBG_trace2( "    SEP=%s; VALUE=%s; S=%s; FOUND=%d; TO=%s", (self.ar_sep[idx+1], value,s,foundat,self.ar_tokens[idx]) )

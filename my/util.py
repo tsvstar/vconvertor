@@ -332,6 +332,7 @@ class PsuedoMultiThread(object):
         value, fp = self.task_queue.pop(0)
         stdout,stderr = fp.communicate()
         ##print "STDOUT:\n%s\nSTDERR:%s\n" %(stdout,stderr)
+        #DBG_trace2( "STDERR IS:\n%s\nSTDOUT:\n%s\n", [stderr,stdout] )
         if stderr not in [ None, '']:
             say( "failed task %s\nERROR:%s", ( value, stderr ) )
         else:
