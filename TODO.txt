@@ -15,7 +15,10 @@
 * process path/to/files/grep_pattern
 
 * [maybe] load config from pyfile directory
-* output suffix (what to add as the suffix to the name of output file) 
+* output suffix (what to add as the suffix to the name of output file)
+* if ExtraAVS given in the key as task - it doesn't applied
+* if give extraavs with ',' (not a valid separator) - no such found but no error happens 
+* need to add a key @SRCPATH_AVS@ -- because now name could differ because of suffixes
 
 * move configs to "./cfg", log and cache to "./log" [?]
 					+ store log of command string (unique only? or maybe with timestamp)
