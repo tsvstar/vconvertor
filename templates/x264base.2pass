@@ -2,7 +2,7 @@
 <TaggedJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <EncodingSpeed />
   <Job xsi:type="VideoJob">
-    <Input>@SRCPATH@.avs</Input>
+    <Input>@SRCPATH_AVS@</Input>
     <Output>@SRCPATH@.264</Output>
     <FilesToDelete>
       <string>@SRCPATH@.stats</string>

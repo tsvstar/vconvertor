@@ -669,32 +669,6 @@ def PHASE2_3( fname, to_encode, info, joblist ):
             say("Looks like crossdependency in keys. Some keys are unresolved: %s", [failed] )
         return keys
 
-    basekeys = { '@SRCPATH@': fname,                            # source file
-             '@SRCPATH_WO_EXT@': os.path.splitext(fname)[0],   # source file without extension
-             '@SRCPATH_VIDEO@': fname,                          # intermediary video file
-             '@SRCPATH_AUDIO@': fname,                          # intermediary audio file
-             '@MEGUI@': my.megui.megui_path,
-             '@SUFFIX@': cfg.get_opt(mainopts,'SUFFIX'),
-             '@BITRATE@': to_encode.get("{BITRATE}",{}).get("pvalue",0),
-             '@CRF@': to_encode.get("{BITRATE}",{}).get("pvalue",0)
-    }
-    keys = GetKeys(basekeys)
-    keys['@{A_DELAY_MS}@'] = "%d" % int(my.util.makefloat(keys['@{A_DELAY_MS}@']))
-
-    # DEBUG INFO
-    if isDebug:
-        DBG_trace( "fname=%s (%s)", [fname,type(fname)])
-        DBG_trace( "to_encode==>",  )
-        for k,v in to_encode.iteritems():
-            DBG_trace( "  %s: %s", [repr(k), repr(v)])
-        DBG_trace( "info=%s", repr(info) )
-        DBG_trace( "mainopt=%s", repr(mainopts) )
-        DBG_trace( 'keys=%s', repr(keys) )
-        #for k,v in keys.iteritems():  print k,v
-
-    # init copy of main opts (here will be accumulated options from adjustments
-    optscopy = copy.deepcopy( mainopts )
-
     # Auxilary function. Find in childs a single record with "tag",
     #   raise exception if error and create it if needed
     def _xml_scan( xml, tag_path, err_msg='', createIfNotFound = False ):
@@ -844,6 +818,32 @@ def PHASE2_3( fname, to_encode, info, joblist ):
                 kww['required'] = [jobname]
         return kww['required']
 
+    # Init
+    basekeys = { '@SRCPATH@': fname,                            # source file
+             '@SRCPATH_WO_EXT@': os.path.splitext(fname)[0],   # source file without extension
+             '@SRCPATH_VIDEO@': fname,                          # intermediary video file
+             '@SRCPATH_AUDIO@': fname,                          # intermediary audio file
+             '@MEGUI@': my.megui.megui_path,
+             '@SUFFIX@': cfg.get_opt(mainopts,'SUFFIX'),
+             '@BITRATE@': to_encode.get("{BITRATE}",{}).get("pvalue",0),
+             '@CRF@': to_encode.get("{BITRATE}",{}).get("pvalue",0)
+    }
+    keys = GetKeys(basekeys)
+    keys['@{A_DELAY_MS}@'] = "%d" % int(my.util.makefloat(keys['@{A_DELAY_MS}@']))
+
+    # DEBUG INFO
+    if isDebug:
+        DBG_trace( "fname=%s (%s)", [fname,type(fname)])
+        DBG_trace( "to_encode==>",  )
+        for k,v in to_encode.iteritems():
+            DBG_trace( "  %s: %s", [repr(k), repr(v)])
+        DBG_trace( "info=%s", repr(info) )
+        DBG_trace( "mainopt=%s", repr(mainopts) )
+        DBG_trace( 'keys=%s', repr(keys) )
+        #for k,v in keys.iteritems():  print k,v
+
+    # init copy of main opts (here will be accumulated options from adjustments
+    optscopy = copy.deepcopy( mainopts )
 
     # PROCESS {AVS_TEMPLATE}
     global extra_avs_sections_glob
@@ -863,6 +863,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
 
     detect_pname, encode_tname, content, opts  = getEncodeTokens( '{AVS_TEMPLATE}', contentPrepareHandler =  PrepareExtraAvs )
     avsfname = '%s%s.avs' % ( fname, '.%s' % '+'.join(extra_avs_sections_glob) if extra_avs_sections_glob else '' )
+    keys['@SRCPATH_AVS@'] = avsfname
 
     if os.path.isfile(avsfname) and not cfg.get_opt( opts, 'AVS_OVERWRITE' ):
         say( "%s exists - do not overwrite", os.path.basename(avsfname) )
