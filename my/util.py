@@ -112,6 +112,8 @@ def str_decode_all( lst, enc = None ):
 ####     ######
 """
 def grep_compile( pattern, caseInsensetive = False ):
+    if not isinstance(pattern, basestring):
+        return pattern
     pattern = pattern.replace('.','\\.').replace('?','.?').replace('*','.*?').replace('^','\\^').replace('$','\\$') + '$'
     if caseInsensetive:
         return re.compile( pattern, re.IGNORECASE )

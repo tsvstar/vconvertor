@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<TaggedJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Job xsi:type="HDStreamsExJob">
+    <Input>@SRCPATH@</Input>
+    <Output>@TXTPATH@</Output>
+    <FilesToDelete />
+    <Args>@TXT_STREAM@:"@TXTPATH@" </Args>
+    <Source>
+      <string>@SRCPATH@</string>
+    </Source>
+    <InputType>2</InputType>
+  </Job>
+  <OwningWorker />
+  <RequiredJobNames />
+  <EnabledJobNames />
+  <Name>job1</Name>
+  <Status>DONE</Status>
+  <Start>2015-07-21T08:00:10.5542907+03:00</Start>
+  <End>2015-07-21T08:00:16.0449907+03:00</End>
+</TaggedJob>

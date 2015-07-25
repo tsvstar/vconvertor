@@ -1,3 +1,4 @@
 General;%Format%
 Video;|VIDEO|%Width%x%Height%@%FrameRate%|%BitRate/String%|%DisplayAspectRatio%|%Format%|%Format_Profile%|%ScanType%|%ScanOrder%
-Audio;|AUDIO|%Channel(s)%|%Codec%|%Codec/String%|%BitRate/String%|%Alignment%|%Delay%
+Audio;|AUDIO|%Channel(s)%|%Codec%|%Codec/String%|%BitRate/String%|%Alignment%|%Delay%|TEXT
+Text;|%StreamOrder%|%Format%|

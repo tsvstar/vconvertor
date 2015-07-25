@@ -11,6 +11,18 @@
 
 ========  TODO ===============
 
+* #include (???) - context related (if included inside of [SECTION] - this is the part of this section)
+		"python" includes are detected by header
+* AVI_DEMUX processing:
+	- AVI_DEMUX key; EXTRA_PART??
+* custom processing function:
+	- ENCODE_*
+	- TASK_*
+
+---> what need to do: a) filter MTS sony records, process them in AVIDEMUX; b) mux with subtitle using MEGUI
+
+
+
 * run-time pattern deletion (by giving empty value)
 * process path/to/files/grep_pattern
 
@@ -72,6 +84,8 @@
 
 
 ========  DONE ===============
+
+* processing subtitle
 
 * add all extra avs to the *.avs file name (and so we can have any combination of them)
 

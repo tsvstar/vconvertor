@@ -267,12 +267,14 @@ def parseCONFIGS( argvkeys ):
 
     cfg.pattern_template['DETECT'] = _mycfg.PatternTemplate( 'DETECT',
     						'{CONTAINER}|VIDEO|{WIDTH}x{HEIGHT}@{FPS}|{V_BRATE} {?V_BRATE_TYPE}|{RATIO}={AR_X}:{AR_Y}|{VCODEC}|{VPROFILE}|{VSCAN_TYPE}|{VSCAN_ORDER}'+
-    						'|AUDIO|{A_CHANNEL}|{A_CODEC}|{A_CODEC2}|{A_BRATE}|{A_ALIGNMENT}|{A_DELAY_MS}')
-    cfg.pattern_template['ENCODE'] = _mycfg.PatternTemplate( 'ENCODE', '{BITRATE}|{AVS_TEMPLATE}|{INDEX_JOB}|{VIDEO_PASS}|{AUDIO_ENCODE}|{MUX_JOB}' )
+    						'|AUDIO|{A_CHANNEL}|{A_CODEC}|{A_CODEC2}|{A_BRATE}|{A_ALIGNMENT}|{A_DELAY_MS}'+
+							'|TEXT|{TXT_STREAM}|{TXT_FMT}')
+    cfg.pattern_template['ENCODE'] = _mycfg.PatternTemplate( 'ENCODE', '{BITRATE}|{AVS_TEMPLATE}|{INDEX_JOB}|{VIDEO_PASS}|{AUDIO_ENCODE}|{MUX_JOB}|{TEXT_JOB}' )
     apply_pattern( 'DETECT', mainopts.get('DETECT',None), cfg.config['DETECT'][None] )        # copy from opts
     apply_pattern( 'ENCODE', mainopts.get('ENCODE',None), cfg.config['ENCODE'][None] )
     ##for k in cfg.pattern_template:              # @tsv
     ##    cfg.pattern_template[k].isDebug=True
+
     p_detect = cfg.pattern_template['DETECT'].parse_pattern( cfg.config['DETECT'][None], strictError = True )
     p_encode = cfg.pattern_template['ENCODE'].parse_pattern( cfg.config['ENCODE'][None] )
 
@@ -338,6 +340,8 @@ class MyCachedProcessor( my.util.CachedProcessor ):
     @staticmethod
     def validate( value, verbose = False ):
         try:
+            if len(value.split('|'))==16 and value.find("|TEXT|")<0:
+                value += '|TEXT||'
             return (cfg.pattern_template['DETECT']).parse_pattern( {'_': value}, strictError = True, silent = not verbose )
         except _mycfg.StrictError:
             return None
@@ -357,7 +361,8 @@ def PHASE1( to_process ):
     output = ( "--Output="+
         """General;%Format%
 Video;|VIDEO|%Width%x%Height%@%FrameRate%|%BitRate/String%|%DisplayAspectRatio%=%DisplayAspectRatio/String%|%Format%|%Format_Profile%|%ScanType%|%ScanOrder%
-Audio;|AUDIO|%Channel(s)%|%Codec%|%Codec/String%|%BitRate/String%|%Alignment%|%Delay%""" )
+Audio;|AUDIO|%Channel(s)%|%Codec%|%Codec/String%|%BitRate/String%|%Alignment%|%Delay%
+Text;|TEXT|%StreamOrder%|%Format%""" )
 
 
     cacheObj = my.util.FileInfoCache( '.cache' )
@@ -444,7 +449,11 @@ def PHASE2( process_queue, joblist ):
                 detected.append( pname )
         DBG_trace('')
 
-        #3) cutoff suffix from detect pattern (that the thing which allow to make a lot of correspondance to the same patter)
+        #3) Check subtitle
+        if parsed_info.get('{TXT_FMT}',''):
+            detected.append('TEXT')
+
+        #4) cutoff suffix from detect pattern (that the thing which allow to make a lot of correspondance to the same pattern)
         detected = list( set( map( lambda s: s.split('.',1)[0], detected ) ) )
 
         say( u"%(fname)s\t=> %(w)s*%(h)s@%(fps)s = %(ar)s; %(profile)s ( %(detected)s )" % {
@@ -468,7 +477,7 @@ def PHASE2( process_queue, joblist ):
             say( " >> skipped( patterns doesn't match to any of MATCH_ONLY: %s )", ', '.join(mainopts['MATCH_ONLY']) )
             continue
 
-        # 4) apply ENFORCE_PATTERN if given
+        # 5) apply ENFORCE_PATTERN if given
             # a) if "|pattern1|pattern2|.." - then append
             # b) if "pattern1|pattern2|.."  - then replace
         enforce_patterns = cfg.get_opt( mainopts, 'ENFORCE_PATTERN' )
@@ -596,6 +605,7 @@ def PHASE2_2( detected ):
 
         to_encode[p_token_name] = to_encode_cur
 
+    # PRINT INFO
     to_print = []
     extraavs = filter(len, cfg.get_opt( mainopts, 'EXTRA_AVS' ) )
     for p_token_name in cfg.pattern_template['ENCODE'].ar_tokens:
@@ -721,7 +731,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
             if v.find('@')>=0:
                 for src, dst in keys.iteritems():       #@tsv
                     if callable(dst) and v.find(src)>=0:
-                        dst = dst( keys, optscopy )
+                        dst = dst( keys, optscopy, adj )
                     v = v.replace(src,str(dst))
                 adj[k]=v
 
@@ -743,7 +753,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
                 kname = k[1:-1]
                 kval = keys.get(k,None)
                 if callable(kval):
-                    kval(keys_local,optscopy,v)
+                    kval(keys_local,optscopy,adj,v)
                 else:
                     keys_local[ kname ] = v
                 del adj[k]
@@ -760,7 +770,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
                 ##    print src, dst
                 if callable(dst) and content[idx].find(src)>=0:
                     ##my.util.PRINT_MARK('CALL CONTENT %s'% src)
-                    dst = dst(keys_local,optscopy)
+                    dst = dst(keys_local,optscopy, adj)
                 content[idx] = content[idx].replace(src,str(dst))
 
         # 7. detect if any @KEY@ still left undefined
@@ -795,10 +805,10 @@ def PHASE2_3( fname, to_encode, info, joblist ):
                         name = name[1:]
                     tagpath = name.split(':')
                     elem = root
-                    ##DBG_info("@tsv adj[]=%s/%s",[name,value])
+                    DBG_trace("@tsv adj[]=%s/%s",[name,value])
                     for idx in range(0,len(tagpath)):
                         if flag=='+' and (idx==len(tagpath)-1):
-                            ##DBG_info("@tsv addelem(parent=%s,tag=%s)",[elem.tag, tagpath[-1]])
+                            DBG_trace("@tsv addelem(parent=%s,tag=%s)",[elem.tag, tagpath[-1]])
                             elem =  ET.add_elem_notnil(elem,tagpath[-1],'')
                         else:
                             elem = _xml_scan( elem, tagpath[:idx+1], err_msg = err_msg,
@@ -826,7 +836,8 @@ def PHASE2_3( fname, to_encode, info, joblist ):
              '@MEGUI@': my.megui.megui_path,
              '@SUFFIX@': cfg.get_opt(mainopts,'SUFFIX'),
              '@BITRATE@': to_encode.get("{BITRATE}",{}).get("pvalue",0),
-             '@CRF@': to_encode.get("{BITRATE}",{}).get("pvalue",0)
+             '@CRF@': to_encode.get("{BITRATE}",{}).get("pvalue",0),
+             '@TXTPATH@': '',                                   # if subtitle stream exists
     }
     keys = GetKeys(basekeys)
     keys['@{A_DELAY_MS}@'] = "%d" % int(my.util.makefloat(keys['@{A_DELAY_MS}@']))
@@ -891,6 +902,21 @@ def PHASE2_3( fname, to_encode, info, joblist ):
         return
 
     # PREPARE ALL OTHER JOBS (to not leave unfinished if any error)
+
+    if info.get('{TXT_FMT}',''):
+        stream = info.get('{TXT_STREAM}')
+        try:
+            ar = map( int, stream.strip().split('-') )
+            if len(ar)>1:
+                ar.append(0)
+            keys['@TXT_STREAM@'] = ar[1]-ar[0]+1
+            keys['@TXTPATH@'] = '%s.sup' % keys['@SRCPATH@']
+            DBG_trace( "{TEXT_JOB}: stream=%s -> @TXT_STREAM@=%s" % (stream, keys['@TXT_STREAM@']) )
+            text_tuple  = getEncodeTokens( '{TEXT_JOB}', xml=True )
+        except Exception as e:
+            DBG_info('{TEXT_JOB}: Fail to process for stream #%s (%s) - skip subtitle processing' % ( stream, e ) )
+
+
     video_tuple = getEncodeTokens( '{VIDEO_PASS}', xml=True, allowEmpty = True )
     content = video_tuple[2]
     if len(content):
@@ -905,6 +931,10 @@ def PHASE2_3( fname, to_encode, info, joblist ):
 
     postponed = postponed_queue if index_only<0 else None
 
+    if keys['@TXTPATH@']:
+        detect_pname, encode_tname, content, opts  = text_tuple
+        required = AddJobs( content, postponed = postponed )
+
     detect_pname, encode_tname, content, opts  = video_tuple
     required = AddJobs( content, postponed = postponed )
 
@@ -916,6 +946,9 @@ def PHASE2_3( fname, to_encode, info, joblist ):
         to_del.append( keys['@SRCPATH_VIDEO@'] )
     if keys['@SRCPATH_AUDIO@']!=keys['@SRCPATH@']:
         to_del.append( keys['@SRCPATH_AUDIO@'] )
+    if keys['@TXTPATH@']:
+        to_del.append( keys['@TXTPATH@'] )
+        to_del.append( keys['@SRCPATH@'] + " - Log.txt" )
 
     if not makebool( cfg.get_opt( opts, 'KEEP_TMP' ) ):
         for delpath in to_del:
