@@ -11,6 +11,14 @@
 
 ========  TODO ===============
 
+* simple conditions:
+	{<x},{>y}, {a,b,c}, {<a,>b}
+* if given task but no such - fail immediately
+* if given @FN_..@= but no such, then error
+* add ',' as allowed TASK list separator
+
+
+
 * #include (???) - context related (if included inside of [SECTION] - this is the part of this section)
 		"python" includes are detected by header
 * AVI_DEMUX processing:
@@ -21,6 +29,12 @@
 
 ---> what need to do: a) filter MTS sony records, process them in AVIDEMUX; b) mux with subtitle using MEGUI
 
+* in encoding pattern '*' means "do not replace" - and so be able to replace bitrate of some patterns (sony:mts=>4000|*). REMARK: uncomfortable
+* is bitrate value could be @VAL@ (??)
+	@VAL@ = default
+	sony:mts => @VAL@|...
+* say --TASK=xx --EXTRA_AVS=xx --help / --dry
+	-> produce output of all encoding templates (which are present exists in detect section too or enforce_pattern|allowed_pattern) resolved to real values
 
 
 * run-time pattern deletion (by giving empty value)

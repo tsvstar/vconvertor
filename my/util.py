@@ -525,6 +525,7 @@ class CachedProcessor(object):
             if self.aggresiveCache:
                 self.cacheObj.update( fname, '' )
             say( "INVALID OUTPUT(PROBABLY NOT GOOD MEDIA): %s", fname )
+            DBG_info( "%s", value )
 
 """
     Customized implementation of OrderedDict

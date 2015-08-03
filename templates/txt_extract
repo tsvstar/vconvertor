@@ -1,12 +1,12 @@
 <?xml version="1.0"?>
 <TaggedJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <Job xsi:type="HDStreamsExJob">
-    <Input>@SRCPATH@</Input>
+    <Input>@SRCTXTPATH@</Input>
     <Output>@TXTPATH@</Output>
     <FilesToDelete />
     <Args>@TXT_STREAM@:"@TXTPATH@" </Args>
     <Source>
-      <string>@SRCPATH@</string>
+      <string>@SRCTXTPATH@</string>
     </Source>
     <InputType>2</InputType>
   </Job>

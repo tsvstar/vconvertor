@@ -830,9 +830,10 @@ def PHASE2_3( fname, to_encode, info, joblist ):
 
     # Init
     basekeys = { '@SRCPATH@': fname,                            # source file
-             '@SRCPATH_WO_EXT@': os.path.splitext(fname)[0],   # source file without extension
+             '@SRCPATH_WO_EXT@': os.path.splitext(fname)[0],    # source file without extension
              '@SRCPATH_VIDEO@': fname,                          # intermediary video file
              '@SRCPATH_AUDIO@': fname,                          # intermediary audio file
+			 '@SRCTXTPATH@': fname,								# from which file extract subtitle
              '@MEGUI@': my.megui.megui_path,
              '@SUFFIX@': cfg.get_opt(mainopts,'SUFFIX'),
              '@BITRATE@': to_encode.get("{BITRATE}",{}).get("pvalue",0),
@@ -903,19 +904,26 @@ def PHASE2_3( fname, to_encode, info, joblist ):
 
     # PREPARE ALL OTHER JOBS (to not leave unfinished if any error)
 
+    stream = info.get('{TXT_STREAM}')
     if info.get('{TXT_FMT}',''):
-        stream = info.get('{TXT_STREAM}')
         try:
             ar = map( int, stream.strip().split('-') )
             if len(ar)>1:
                 ar.append(0)
             keys['@TXT_STREAM@'] = ar[1]-ar[0]+1
-            keys['@TXTPATH@'] = '%s.sup' % keys['@SRCPATH@']
+            keys['@TXTPATH@'] = '%s.sup' % keys['@SRCTXTPATH@']
             DBG_trace( "{TEXT_JOB}: stream=%s -> @TXT_STREAM@=%s" % (stream, keys['@TXT_STREAM@']) )
-            text_tuple  = getEncodeTokens( '{TEXT_JOB}', xml=True )
         except Exception as e:
             DBG_info('{TEXT_JOB}: Fail to process for stream #%s (%s) - skip subtitle processing' % ( stream, e ) )
 
+    
+    try:
+    	text_tuple  = getEncodeTokens( '{TEXT_JOB}', xml=True )
+    except Exception as e:
+        res = str(e).find("Empty {TEXT_JOB}")
+        if keys['@TXTPATH@'] or res<0:
+             say('{TEXT_JOB}: Fail to process for stream #%s (%s) - skip subtitle processing' % ( stream, e ) )
+    
 
     video_tuple = getEncodeTokens( '{VIDEO_PASS}', xml=True, allowEmpty = True )
     content = video_tuple[2]
@@ -948,7 +956,7 @@ def PHASE2_3( fname, to_encode, info, joblist ):
         to_del.append( keys['@SRCPATH_AUDIO@'] )
     if keys['@TXTPATH@']:
         to_del.append( keys['@TXTPATH@'] )
-        to_del.append( keys['@SRCPATH@'] + " - Log.txt" )
+        to_del.append( keys['@SRCTXTPATH@'] + " - Log.txt" )
 
     if not makebool( cfg.get_opt( opts, 'KEEP_TMP' ) ):
         for delpath in to_del:

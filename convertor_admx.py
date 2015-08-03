@@ -88,7 +88,10 @@ adm.setContainer("ffTS", "acceptNonCompliant=False", "vbr=True", "muxRateInMBits
     print "Added %04d: %s" % ( lastid, path.encode('cp866','ignore'))
 
 #res = my.util.scan_dir("H:/F2015/20150711ZoukotekaAdilio/src/",recursive=True, pattern="*.*")
-res = my.util.scan_dir(sys.argv[1],recursive=True, pattern="*.mts")
+dirname = sys.argv[1]
+if not os.path.exists( dirname ) and dirname.endswith('"'):
+    dirname = dirname[:-1]
+res = my.util.scan_dir( dirname, recursive=False, pattern="*.mts")
 for path in res:
     AddJob( path )
 conn.commit()
